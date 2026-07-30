@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>今週のおみくじ 🎋</title>
+<style>
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    overflow-x: hidden;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+    background: linear-gradient(135deg, #ffd9ec 0%, #ffe9d6 45%, #d9f2ff 100%);
+    background-size: 200% 200%;
+    animation: bgMove 12s ease-in-out infinite;
+    padding: 20px 16px;
+  }
+
+  @keyframes bgMove {
+    0%   { background-position: 0% 50%; }
+    50%  { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+
+  .card {
+    position: relative;
+    background: #fffaf6;
+    border-radius: 28px;
+    padding: clamp(28px, 8vw, 40px) clamp(20px, 6vw, 32px) 28px;
+    width: 100%;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 20px 40px rgba(255, 150, 190, 0.25), 0 0 0 6px rgba(255, 255, 255, 0.6) inset;
+    border: 3px solid #ffc3de;
+  }
+
+  .card::before {
+    content: "🌸";
+    position: absolute;
+    top: -22px;
+    left: -14px;
+    font-size: 40px;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.1));
+    animation: sway 3s ease-in-out infinite;
+  }
+
+  .card::after {
+    content: "🌸";
+    position: absolute;
+    bottom: -18px;
+    right: -12px;
+    font-size: 36px;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.1));
+    animation: sway 3.5s ease-in-out infinite reverse;
+  }
+
+  @keyframes sway {
+    0%, 100% { transform: rotate(-8deg); }
+    50% { transform: rotate(8deg); }
+  }
+
+  h1 {
+    margin: 0 0 6px;
+    font-size: clamp(21px, 5.5vw, 26px);
+    color: #ff6fa5;
+    letter-spacing: 1.5px;
+  }
+
+  .subtitle {
+    margin: 0 0 22px;
+    font-size: 13px;
+    color: #cf94a8;
+    line-height: 1.5;
+  }
+
+  .box-wrap {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 22px;
+  }
+
+  .omikuji-box {
+    font-size: clamp(70px, 20vw, 90px);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.15s ease;
+    filter: drop-shadow(0 8px 10px rgba(255, 140, 180, 0.35));
+  }
+
+  .omikuji-box:hover {
+    transform: scale(1.06) rotate(-3deg);
+  }
+
+  .omikuji-box:active {
+    transform: scale(0.94);
+  }
+
+  .omikuji-box.shaking {
+    animation: shake 0.6s ease-in-out;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: rotate(0deg) translateX(0); }
+    15% { transform: rotate(-12deg) translateX(-6px); }
+    30% { transform: rotate(10deg) translateX(6px); }
+    45% { transform: rotate(-10deg) translateX(-5px); }
+    60% { transform: rotate(8deg) translateX(5px); }
+    75% { transform: rotate(-6deg) translateX(-3px); }
+  }
+
+  /* 紙飛行機が画面を横切る演出 */
+  .paper-plane {
+    position: fixed;
+    left: -12%;
+    top: 55%;
+    font-size: 34px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 999;
+    transform: rotate(8deg);
+  }
+
+  .paper-plane.flying {
+    animation: flyAcross 1.1s ease-in-out forwards;
+  }
+
+  @keyframes flyAcross {
+    0%   { left: -12%; top: 58%; opacity: 1; transform: rotate(8deg) scale(1); }
+    45%  { top: 14%;   opacity: 1; transform: rotate(-6deg) scale(1.08); }
+    85%  { opacity: 1; }
+    100% { left: 112%; top: 34%; opacity: 0; transform: rotate(10deg) scale(0.9); }
+  }
+
+  button.draw-btn {
+    font-family: inherit;
+    font-size: 17px;
+    font-weight: bold;
+    color: #fff;
+    background: linear-gradient(135deg, #ff9ec4, #ff7bb5);
+    border: none;
+    border-radius: 999px;
+    padding: 14px 40px;
+    cursor: pointer;
+    box-shadow: 0 8px 18px rgba(255, 110, 160, 0.45);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    min-height: 48px;
+    width: 100%;
+    max-width: 260px;
+  }
+
+  button.draw-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 22px rgba(255, 110, 160, 0.55);
+  }
+
+  button.draw-btn:active {
+    transform: translateY(1px) scale(0.98);
+  }
+
+  button.draw-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+    transform: none;
+  }
+
+  .result {
+    margin-top: 24px;
+  }
+
+  .result-inner {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+
+  .result-inner.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  .result-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ff6fa5;
+    margin: 0 0 12px;
+    text-align: left;
+  }
+
+  .week-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .week-row {
+    text-align: left;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: #fff6fa;
+    border: 2px solid transparent;
+  }
+
+  .week-row.today {
+    border-color: #ff9ec4;
+    background: #fff0f6;
+    box-shadow: 0 4px 10px rgba(255, 130, 175, 0.2);
+  }
+
+  .week-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 3px;
+  }
+
+  .week-day {
+    font-weight: bold;
+    font-size: 13px;
+    color: #b06b85;
+    flex-shrink: 0;
+  }
+
+  .today-badge {
+    font-size: 10px;
+    font-weight: bold;
+    color: #fff;
+    background: #ff8ab5;
+    border-radius: 999px;
+    padding: 1px 8px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+
+  .week-rank {
+    font-weight: bold;
+    font-size: 16px;
+    white-space: nowrap;
+  }
+
+  .week-message {
+    font-size: 12.5px;
+    color: #8a6672;
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .rank-daikichi { color: #ff5da2; }
+  .rank-kichi    { color: #ff8a5b; }
+  .rank-chukichi { color: #ffa63c; }
+  .rank-shokichi { color: #4fb8a8; }
+  .rank-suekichi { color: #6fa8e0; }
+  .rank-kyo      { color: #8d8d99; }
+
+  .footer-note {
+    margin-top: 18px;
+    font-size: 11px;
+    color: #dbb6c4;
+  }
+
+  @media (max-width: 360px) {
+    .card {
+      padding: 24px 16px 22px;
+    }
+    .week-row {
+      padding: 9px 11px;
+    }
+    .week-message {
+      font-size: 12px;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="paper-plane" id="plane">✈️</div>
+
+  <div class="card">
+    <h1>今週のおみくじ</h1>
+    <p class="subtitle">おみくじ箱をタップして、月〜日の運勢をまとめてチェック！</p>
+
+    <div class="box-wrap">
+      <div class="omikuji-box" id="omikujiBox">🎋</div>
+    </div>
+
+    <button class="draw-btn" id="drawBtn">おみくじを引く</button>
+
+    <div class="result" id="result">
+      <div class="result-inner" id="resultInner">
+        <p class="result-title">今週の運勢</p>
+        <div class="week-list" id="weekList"></div>
+      </div>
+    </div>
+
+    <p class="footer-note">1週間に1回、今週の運勢をチェック✨</p>
+  </div>
+
+<script>
+  const fortunes = [
+    {
+      rank: "大吉",
+      className: "rank-daikichi",
+      messages: [
+        "最高の1日になりそう！思い切って挑戦してみて。",
+        "願いごとが叶いやすいとき。素直な気持ちで行動しよう。",
+        "嬉しいサプライズがあるかも。周りへの感謝も忘れずに。"
+      ]
+    },
+    {
+      rank: "中吉",
+      className: "rank-chukichi",
+      messages: [
+        "物事が順調に進む予感。焦らずコツコツ続けよう。",
+        "新しい出会いが運気アップのカギ。積極的に動いてみて。",
+        "小さな幸せに気づきやすい日。丁寧に過ごしてみよう。"
+      ]
+    },
+    {
+      rank: "小吉",
+      className: "rank-shokichi",
+      messages: [
+        "ゆっくりでも着実に前進できる日。無理は禁物。",
+        "気になっていたことを試すと良い流れが来るかも。",
+        "リラックスタイムを大事にすると運気が整いそう。"
+      ]
+    },
+    {
+      rank: "吉",
+      className: "rank-kichi",
+      messages: [
+        "穏やかで安定した1日。いつも通りが1番◎",
+        "小さな幸運がありそう。周りをよく見て過ごしてみて。",
+        "無理せず自分のペースを守ると吉。"
+      ]
+    },
+    {
+      rank: "末吉",
+      className: "rank-suekichi",
+      messages: [
+        "後半にかけて運気が上向くかも。焦らず待とう。",
+        "地道な努力が少しずつ実を結びそう。",
+        "小さな一歩を積み重ねることが大切な日。"
+      ]
+    },
+    {
+      rank: "凶",
+      className: "rank-kyo",
+      messages: [
+        "ちょっと慎重に過ごしたい日。無理な決断は避けよう。",
+        "小さなトラブルに注意。深呼吸してひと休みを。",
+        "今日はゆっくり充電日にするのがおすすめ。"
+      ]
+    }
+  ];
+
+  const dayLabels = ["月", "火", "水", "木", "金", "土", "日"];
+  const todayIndex = (new Date().getDay() + 6) % 7;
+
+  const box = document.getElementById("omikujiBox");
+  const plane = document.getElementById("plane");
+  const drawBtn = document.getElementById("drawBtn");
+  const resultInner = document.getElementById("resultInner");
+  const weekList = document.getElementById("weekList");
+
+  function pickFortune() {
+    const fortune = fortunes[Math.floor(Math.random() * fortunes.length)];
+    const message = fortune.messages[Math.floor(Math.random() * fortune.messages.length)];
+    return { rank: fortune.rank, className: fortune.className, message };
+  }
+
+  function renderWeek() {
+    weekList.innerHTML = "";
+
+    dayLabels.forEach((day, i) => {
+      const { rank, className, message } = pickFortune();
+      const isToday = i === todayIndex;
+
+      const row = document.createElement("div");
+      row.className = "week-row" + (isToday ? " today" : "");
+
+      row.innerHTML =
+        '<div class="week-row-head">' +
+          '<span class="week-day">' + day + (isToday ? '<span class="today-badge">TODAY</span>' : "") + '</span>' +
+          '<span class="week-rank ' + className + '">' + rank + '</span>' +
+        '</div>' +
+        '<p class="week-message">' + message + '</p>';
+
+      weekList.appendChild(row);
+    });
+  }
+
+  function flyPlane() {
+    plane.classList.remove("flying");
+    void plane.offsetWidth;
+    plane.classList.add("flying");
+  }
+
+  function drawFortune() {
+    drawBtn.disabled = true;
+    resultInner.classList.remove("show");
+
+    box.classList.remove("shaking");
+    void box.offsetWidth;
+    box.classList.add("shaking");
+
+    flyPlane();
+
+    setTimeout(() => {
+      renderWeek();
+      resultInner.classList.add("show");
+      drawBtn.disabled = false;
+    }, 900);
+  }
+
+  drawBtn.addEventListener("click", drawFortune);
+  box.addEventListener("click", drawFortune);
+</script>
+
+</body>
+</html>

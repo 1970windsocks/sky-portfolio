@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>診断メーカー</title>
+<style>
+  :root {
+    color-scheme: light;
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "Hiragino Kaku Gothic ProN", "Yu Gothic", serif;
+    background: #f5f0e1;
+    color: #2c2717;
+    display: flex;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  main {
+    width: 100%;
+    max-width: 640px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    margin: 4px 0 2px;
+    color: #2c2717;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: #9c8b57;
+    margin-bottom: 24px;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  .status {
+    text-align: center;
+    font-size: 0.75rem;
+    color: #a13d3d;
+    min-height: 1.2em;
+    margin-bottom: 12px;
+  }
+  section.card {
+    background: #fffdf7;
+    border: 1px solid #e0d0a0;
+    border-radius: 16px;
+    padding: 20px 22px;
+    box-shadow: 0 4px 16px rgba(90, 70, 20, 0.06);
+    margin-bottom: 20px;
+  }
+  section.card h2 {
+    font-size: 1rem;
+    letter-spacing: 0.1em;
+    color: #9c7a1a;
+    margin: 0 0 14px;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    border-bottom: 1px solid #e8dcb8;
+    padding-bottom: 8px;
+  }
+  label {
+    display: block;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    color: #8a7c50;
+    margin-bottom: 5px;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  input[type="text"], select {
+    width: 100%;
+    border: 1px solid rgba(184, 148, 74, 0.4);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 16px;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+    background: #fffefb;
+    color: #2c2717;
+    margin-bottom: 14px;
+  }
+  input[type="text"]:focus, select:focus {
+    outline: none;
+    border-color: #b8860b;
+    box-shadow: 0 0 0 3px rgba(184, 134, 11, 0.15);
+  }
+  .field {
+    margin-bottom: 6px;
+  }
+  .tree-q {
+    border-left: 2px solid #e8dcb8;
+    padding-left: 14px;
+    margin-bottom: 8px;
+  }
+  .tree-q.depth1 { margin-left: 0; }
+  .tree-q.depth2 { margin-left: 18px; }
+  .tree-q.depth3 { margin-left: 36px; }
+  .tree-label {
+    font-size: 0.68rem;
+    color: #b09650;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  .result-block {
+    border: 1px solid #ecdfb8;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    background: #fffefb;
+  }
+  .result-block h3 {
+    font-size: 0.85rem;
+    margin: 0 0 10px;
+    color: #b5860a;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  .leaf-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px dashed #e8dcb8;
+  }
+  .leaf-row:last-child {
+    border-bottom: none;
+  }
+  .leaf-path {
+    font-size: 0.78rem;
+    color: #6b5e3a;
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  .leaf-row select {
+    width: 130px;
+    margin-bottom: 0;
+  }
+  button#generateBtn {
+    width: 100%;
+    padding: 13px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #d8b968, #b8860b);
+    color: #fffdf5;
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(184, 134, 11, 0.35);
+    font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  }
+  button#generateBtn:hover {
+    filter: brightness(1.08);
+  }
+  #resultUrlBox {
+    margin-top: 16px;
+    display: none;
+  }
+  #resultUrlBox input {
+    margin-bottom: 8px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>診断メーカー</h1>
+  <div class="subtitle">SHINDAN MAKER</div>
+  <div class="status" id="statusMsg"></div>
+
+  <section class="card">
+    <h2>診断タイトル</h2>
+    <label for="diagTitle">この診断の名前</label>
+    <input type="text" id="diagTitle" maxlength="30" placeholder="例：あなたの隠れた性格診断">
+  </section>
+
+  <section class="card">
+    <h2>質問（はい/いいえで3問答えて結果にたどり着きます）</h2>
+
+    <div class="tree-q depth1">
+      <div class="tree-label">1問目</div>
+      <input type="text" id="q1" maxlength="60" placeholder="質問文を入力">
+    </div>
+
+    <div class="tree-q depth2">
+      <div class="tree-label">2問目（1問目で「はい」を選んだ人へ）</div>
+      <input type="text" id="q2a" maxlength="60" placeholder="質問文を入力">
+    </div>
+    <div class="tree-q depth2">
+      <div class="tree-label">2問目（1問目で「いいえ」を選んだ人へ）</div>
+      <input type="text" id="q2b" maxlength="60" placeholder="質問文を入力">
+    </div>
+
+    <div class="tree-q depth3">
+      <div class="tree-label">3問目（はい→はい と進んだ人へ）</div>
+      <input type="text" id="q3a" maxlength="60" placeholder="質問文を入力">
+    </div>
+    <div class="tree-q depth3">
+      <div class="tree-label">3問目（はい→いいえ と進んだ人へ）</div>
+      <input type="text" id="q3b" maxlength="60" placeholder="質問文を入力">
+    </div>
+    <div class="tree-q depth3">
+      <div class="tree-label">3問目（いいえ→はい と進んだ人へ）</div>
+      <input type="text" id="q3c" maxlength="60" placeholder="質問文を入力">
+    </div>
+    <div class="tree-q depth3">
+      <div class="tree-label">3問目（いいえ→いいえ と進んだ人へ）</div>
+      <input type="text" id="q3d" maxlength="60" placeholder="質問文を入力">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>結果（4パターン）</h2>
+
+    <div class="result-block">
+      <h3>結果1</h3>
+      <label for="r1title">結果タイトル</label>
+      <input type="text" id="r1title" maxlength="30" placeholder="例：情熱の炎タイプ">
+      <label for="r1comment">一言コメント</label>
+      <input type="text" id="r1comment" maxlength="80" placeholder="例：思い立ったらすぐ行動！周りを引っ張るリーダー気質です。">
+    </div>
+
+    <div class="result-block">
+      <h3>結果2</h3>
+      <label for="r2title">結果タイトル</label>
+      <input type="text" id="r2title" maxlength="30" placeholder="結果タイトル">
+      <label for="r2comment">一言コメント</label>
+      <input type="text" id="r2comment" maxlength="80" placeholder="一言コメント">
+    </div>
+
+    <div class="result-block">
+      <h3>結果3</h3>
+      <label for="r3title">結果タイトル</label>
+      <input type="text" id="r3title" maxlength="30" placeholder="結果タイトル">
+      <label for="r3comment">一言コメント</label>
+      <input type="text" id="r3comment" maxlength="80" placeholder="一言コメント">
+    </div>
+
+    <div class="result-block">
+      <h3>結果4</h3>
+      <label for="r4title">結果タイトル</label>
+      <input type="text" id="r4title" maxlength="30" placeholder="結果タイトル">
+      <label for="r4comment">一言コメント</label>
+      <input type="text" id="r4comment" maxlength="80" placeholder="一言コメント">
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>分岐の行き先（8通り、どの結果につながるか選んでください）</h2>
+
+    <div class="leaf-row">
+      <span class="leaf-path">はい → はい → はい</span>
+      <select id="leaf-yyy">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">はい → はい → いいえ</span>
+      <select id="leaf-yyn">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">はい → いいえ → はい</span>
+      <select id="leaf-yny">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">はい → いいえ → いいえ</span>
+      <select id="leaf-ynn">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">いいえ → はい → はい</span>
+      <select id="leaf-nyy">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">いいえ → はい → いいえ</span>
+      <select id="leaf-nyn">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">いいえ → いいえ → はい</span>
+      <select id="leaf-nny">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+    <div class="leaf-row">
+      <span class="leaf-path">いいえ → いいえ → いいえ</span>
+      <select id="leaf-nnn">
+        <option value="1">結果1</option>
+        <option value="2">結果2</option>
+        <option value="3">結果3</option>
+        <option value="4">結果4</option>
+      </select>
+    </div>
+  </section>
+
+  <button id="generateBtn">診断URLを作る</button>
+
+  <div id="resultUrlBox" class="card">
+    <label for="resultUrlInput">できあがったURL（コピーして配ってください）</label>
+    <input type="text" id="resultUrlInput" readonly>
+  </div>
+</main>
+
+<script>
+const statusMsg = document.getElementById("statusMsg");
+const generateBtn = document.getElementById("generateBtn");
+const resultUrlBox = document.getElementById("resultUrlBox");
+const resultUrlInput = document.getElementById("resultUrlInput");
+
+function toBase64Unicode(str) {
+  const bytes = new TextEncoder().encode(str);
+  let binary = "";
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary);
+}
+
+function base64UrlEncode(str) {
+  return toBase64Unicode(str)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function buildDiagnosisData() {
+  const title = document.getElementById("diagTitle").value.trim();
+  const q = [
+    document.getElementById("q1").value.trim(),
+    document.getElementById("q2a").value.trim(),
+    document.getElementById("q2b").value.trim(),
+    document.getElementById("q3a").value.trim(),
+    document.getElementById("q3b").value.trim(),
+    document.getElementById("q3c").value.trim(),
+    document.getElementById("q3d").value.trim()
+  ];
+  const r = [1, 2, 3, 4].map((n) => [
+    document.getElementById("r" + n + "title").value.trim(),
+    document.getElementById("r" + n + "comment").value.trim()
+  ]);
+  const leafIds = ["yyy", "yyn", "yny", "ynn", "nyy", "nyn", "nny", "nnn"];
+  const l = leafIds.map((id) => Number(document.getElementById("leaf-" + id).value));
+
+  const allFilled =
+    title &&
+    q.every((v) => v) &&
+    r.every(([rt, rc]) => rt && rc);
+
+  if (!allFilled) {
+    return null;
+  }
+  return { t: title, q: q, r: r, l: l };
+}
+
+function generateUrl() {
+  const data = buildDiagnosisData();
+  if (!data) {
+    statusMsg.textContent = "すべての項目を入力してください";
+    resultUrlBox.style.display = "none";
+    return;
+  }
+  statusMsg.textContent = "";
+  const json = JSON.stringify(data);
+  const encoded = base64UrlEncode(json);
+  const url = location.origin + location.pathname + "#d=" + encoded;
+  resultUrlInput.value = url;
+  resultUrlBox.style.display = "block";
+}
+
+generateBtn.addEventListener("click", generateUrl);
+</script>
+</body>
+</html>
