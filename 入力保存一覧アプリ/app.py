@@ -14,12 +14,10 @@ if "username" not in st.session_state:
 
 
 def get_users():
-    try:
+    if st.secrets.load_if_toml_exists():
         users = st.secrets.get("users")
         if users:
             return users
-    except FileNotFoundError:
-        pass
 
     env_users = os.environ.get("APP_USERS")
     if env_users:
