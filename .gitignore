@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 .env
 入力保存一覧アプリ/data.json
 入力保存一覧アプリ/.streamlit/secrets.toml
