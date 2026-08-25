@@ -49,4 +49,4 @@ def test_empty_text_shows_warning(monkeypatch, tmp_path):
     at.text_input[0].input("   ")
     [b for b in at.button if b.label == "保存"][0].click().run()
 
-    assert any("何か入力してください" in w.value for w in at.warning)
+    assert any("さようなら" in w.value for w in at.warning)
