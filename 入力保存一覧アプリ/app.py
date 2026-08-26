@@ -121,6 +121,7 @@ st.divider()
 
 # ③ 一覧
 st.subheader("保存した一覧")
+st.caption(f"現在 {len(my_data)} 件保存されています")
 
 if not my_data:
     st.write("まだ何も保存されていません")
