@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS memos (
+    id SERIAL PRIMARY KEY,
+    owner TEXT NOT NULL,
+    text TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT '',
+    date TEXT NOT NULL DEFAULT ''
+);
