@@ -65,3 +65,19 @@ def test_empty_text_shows_warning():
     [b for b in at.button if b.label == "保存"][0].click().run()
 
     assert any("何か入力してください" in w.value for w in at.warning)
+
+
+def test_toggle_favorite():
+    at = make_app()
+    login(at)
+
+    at.text_input[0].input("牛乳を買う")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()
+
+    fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
+    assert fav_button.label == "☆"
+
+    fav_button.click().run()
+    fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
+    assert fav_button.label == "⭐"

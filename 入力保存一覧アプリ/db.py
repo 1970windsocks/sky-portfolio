@@ -11,10 +11,17 @@ def _connect():
 def list_memos(owner):
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, owner, text, category, date FROM memos WHERE owner = %s ORDER BY id",
+            "SELECT id, owner, text, category, date, is_favorite FROM memos WHERE owner = %s ORDER BY id",
             (owner,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def set_favorite(memo_id, is_favorite):
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE memos SET is_favorite = %s WHERE id = %s", (is_favorite, memo_id)
+        )
 
 
 def insert_memo(owner, text, category="", date=""):

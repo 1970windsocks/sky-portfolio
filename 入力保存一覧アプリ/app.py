@@ -114,12 +114,15 @@ for item in my_data:
                 st.session_state.editing_id = None
                 st.rerun()
         else:
-            col1, col2, col3 = st.columns([6, 1, 1])
+            col1, col2, col3, col4 = st.columns([5, 1, 1, 1])
             col1.write(item["text"])
-            if col2.button("✏️", key=f"edit_btn_{item['id']}", help="編集"):
+            if col2.button("⭐" if item["is_favorite"] else "☆", key=f"fav_{item['id']}", help="お気に入り"):
+                db.set_favorite(item["id"], not item["is_favorite"])
+                st.rerun()
+            if col3.button("✏️", key=f"edit_btn_{item['id']}", help="編集"):
                 st.session_state.editing_id = item["id"]
                 st.rerun()
-            if col3.button("🗑️", key=f"del_{item['id']}", help="削除"):
+            if col4.button("🗑️", key=f"del_{item['id']}", help="削除"):
                 # ④ 削除
                 db.delete_memo(item["id"])
                 st.rerun()
