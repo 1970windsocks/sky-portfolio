@@ -40,6 +40,7 @@ def test_login_then_save_item_appears_in_list(monkeypatch, tmp_path):
 
     at.run()  # 保存後、次の再描画で一覧に反映される
     assert any("牛乳を買う" in m.value for m in at.markdown)
+    assert any("現在 1 件保存されています" in c.value for c in at.caption)
 
 
 def test_empty_text_shows_warning(monkeypatch, tmp_path):
