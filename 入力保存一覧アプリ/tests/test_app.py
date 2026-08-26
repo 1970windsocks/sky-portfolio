@@ -1,14 +1,28 @@
+import os
+import sys
 from pathlib import Path
 
+import psycopg
+import pytest
 from streamlit.testing.v1 import AppTest
 
-APP_PATH = str(Path(__file__).resolve().parent.parent / "app.py")
+APP_DIR = Path(__file__).resolve().parent.parent
+APP_PATH = str(APP_DIR / "app.py")
+
+sys.path.insert(0, str(APP_DIR))
+import migrate  # noqa: E402
 
 
-def make_app(monkeypatch, tmp_path):
-    # data.json は相対パスで開かれるので、実データを壊さないよう
-    # 一時フォルダに移動してからアプリを起動する
-    monkeypatch.chdir(tmp_path)
+@pytest.fixture(autouse=True)
+def clean_db():
+    database_url = os.environ["DATABASE_URL"]
+    migrate.run_pending_migrations(database_url)
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute("TRUNCATE memos RESTART IDENTITY")
+    yield
+
+
+def make_app():
     at = AppTest.from_file(APP_PATH, default_timeout=15)
     at.secrets["users"] = {"tester": "pass123"}
     return at
@@ -21,16 +35,16 @@ def login(at, username="tester", password="pass123"):
     at.button[0].click().run()
 
 
-def test_wrong_password_shows_error(monkeypatch, tmp_path):
-    at = make_app(monkeypatch, tmp_path)
+def test_wrong_password_shows_error():
+    at = make_app()
     login(at, "tester", "wrongpass")
 
     assert any("違います" in e.value for e in at.error)
     assert at.session_state["username"] is None
 
 
-def test_login_then_save_item_appears_in_list(monkeypatch, tmp_path):
-    at = make_app(monkeypatch, tmp_path)
+def test_login_then_save_item_appears_in_list():
+    at = make_app()
     login(at)
     assert at.session_state["username"] == "tester"
 
@@ -43,8 +57,8 @@ def test_login_then_save_item_appears_in_list(monkeypatch, tmp_path):
     assert any("現在 1 件保存されています" in c.value for c in at.caption)
 
 
-def test_empty_text_shows_warning(monkeypatch, tmp_path):
-    at = make_app(monkeypatch, tmp_path)
+def test_empty_text_shows_warning():
+    at = make_app()
     login(at)
 
     at.text_input[0].input("   ")

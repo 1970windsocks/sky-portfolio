@@ -2,9 +2,12 @@ import streamlit as st
 import json
 import os
 
-DATA_FILE = "data.json"
+import db
+import migrate
 
 st.set_page_config(page_title="入力保存アプリ", page_icon="📝", layout="centered")
+
+migrate.run_pending_migrations(os.environ["DATABASE_URL"])
 
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
@@ -60,37 +63,6 @@ def check_login():
 check_login()
 
 
-def load_data():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError:
-                st.warning("保存データが読み込めなかったため、空の状態から始めます。")
-                data = []
-    else:
-        data = []
-
-    # 古いデータ(idが無いもの)にidを振る
-    next_id = 1
-    for item in data:
-        if "id" not in item:
-            item["id"] = next_id
-        next_id = max(next_id, item["id"] + 1)
-
-    # 古いデータ(ownerが無いもの)は自分のデータとして扱う
-    for item in data:
-        if "owner" not in item:
-            item["owner"] = st.session_state.username
-
-    return data
-
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 col_title, col_logout = st.columns([5, 1])
 col_title.title("📝 入力保存アプリ")
 if col_logout.button("ログアウト", use_container_width=True):
@@ -99,8 +71,7 @@ if col_logout.button("ログアウト", use_container_width=True):
     st.rerun()
 st.caption(f"ログイン中: {st.session_state.username} さん")
 
-data = load_data()
-my_data = [item for item in data if item["owner"] == st.session_state.username]
+my_data = db.list_memos(st.session_state.username)
 
 # ① フォーム
 with st.form("add_form", clear_on_submit=True):
@@ -111,10 +82,8 @@ if submitted:
     if text.strip() == "":
         st.warning("何か入力してください")
     else:
-        # ② 保存(新しいidを振って追加)
-        new_id = max([item["id"] for item in data], default=0) + 1
-        data.append({"id": new_id, "text": text, "owner": st.session_state.username})
-        save_data(data)
+        # ② 保存
+        db.insert_memo(st.session_state.username, text)
         st.success(f"保存しました: {text}")
 
 st.divider()
@@ -138,8 +107,7 @@ for item in my_data:
                 if new_text.strip() == "":
                     st.warning("何か入力してください")
                 else:
-                    item["text"] = new_text
-                    save_data(data)
+                    db.update_memo(item["id"], new_text)
                     st.session_state.editing_id = None
                     st.rerun()
             if col2.button("✖️ キャンセル", key=f"cancel_{item['id']}", use_container_width=True):
@@ -152,7 +120,6 @@ for item in my_data:
                 st.session_state.editing_id = item["id"]
                 st.rerun()
             if col3.button("🗑️", key=f"del_{item['id']}", help="削除"):
-                # ④ 削除: この行だけ取り除いて保存し直す
-                data = [d for d in data if d["id"] != item["id"]]
-                save_data(data)
+                # ④ 削除
+                db.delete_memo(item["id"])
                 st.rerun()
