@@ -1,0 +1,21 @@
+name: 本番URLの死活監視
+
+on:
+  schedule:
+    # 15分おき
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 入力保存一覧アプリの本番URLにアクセス
+        run: |
+          url="https://charismatic-abundance-production-cae0.up.railway.app"
+          status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$url")
+          echo "HTTPステータス: $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 400 ]; then
+            echo "本番URLが異常な応答を返しました(status=$status)"
+            exit 1
+          fi
