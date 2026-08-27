@@ -67,6 +67,28 @@ def test_empty_text_shows_warning():
     assert any("何か入力してください" in w.value for w in at.warning)
 
 
+def test_cross_tenant_isolation():
+    """顧客Aで保存したデータが、顧客Bには絶対に見えないことを確認する。"""
+    at = AppTest.from_file(APP_PATH, default_timeout=15)
+    at.secrets["users"] = {"tenant_a": "passA", "tenant_b": "passB"}
+
+    login(at, "tenant_a", "passA")
+    at.text_input[0].input("Aだけの秘密メモ")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()
+    assert any("Aだけの秘密メモ" in m.value for m in at.markdown)
+
+    [b for b in at.button if b.label == "ログアウト"][0].click().run()
+    assert at.session_state["username"] is None
+
+    login(at, "tenant_b", "passB")
+    assert at.session_state["username"] == "tenant_b"
+
+    visible_text = " ".join(m.value for m in at.markdown)
+    assert "Aだけの秘密メモ" not in visible_text
+    assert any("現在 0 件保存されています" in c.value for c in at.caption)
+
+
 def test_toggle_favorite():
     at = make_app()
     login(at)
