@@ -11,6 +11,7 @@ APP_PATH = str(APP_DIR / "app.py")
 
 sys.path.insert(0, str(APP_DIR))
 import auth  # noqa: E402
+import billing  # noqa: E402
 import migrate  # noqa: E402
 
 
@@ -34,6 +35,37 @@ def no_real_email(monkeypatch):
 
     monkeypatch.setattr(auth, "send_email", fake_send_email)
     return sent
+
+
+@pytest.fixture(autouse=True)
+def no_real_stripe(monkeypatch):
+    """テストでは実際にStripeへ接続せず、セッションをメモリ上で模擬する。"""
+    sessions = {}
+
+    def fake_request(method, path, data=None):
+        if method == "POST" and path == "/checkout/sessions":
+            session_id = f"cs_test_{len(sessions) + 1}"
+            sessions[session_id] = {
+                "id": session_id,
+                "url": f"https://stripe.example/checkout/{session_id}",
+                "client_reference_id": data.get("client_reference_id"),
+                "payment_status": "unpaid",
+                "customer": "cus_test_1",
+                "subscription": "sub_test_1",
+            }
+            return sessions[session_id]
+        if method == "GET" and path.startswith("/checkout/sessions/"):
+            session_id = path.rsplit("/", 1)[-1]
+            return sessions.get(session_id, {"payment_status": "unpaid"})
+        raise AssertionError(f"unexpected stripe call: {method} {path}")
+
+    monkeypatch.setattr(billing, "_request", fake_request)
+    return sessions
+
+
+def set_plan(username, plan):
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        conn.execute("UPDATE users SET plan = %s WHERE username = %s", (plan, username))
 
 
 def create_verified_user(username, email, password, role="user"):
@@ -203,6 +235,71 @@ def test_toggle_favorite():
     fav_button.click().run()
     fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
     assert fav_button.label == "⭐"
+
+
+def test_free_plan_blocks_at_limit():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    for i in range(billing.FREE_MEMO_LIMIT):
+        at.text_input[0].input(f"メモ{i}")
+        [b for b in at.button if b.label == "保存"][0].click().run()
+        at.run()
+
+    assert any(f"現在 {billing.FREE_MEMO_LIMIT} 件保存されています" in c.value for c in at.caption)
+
+    at.text_input[0].input("上限を超える1件")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+
+    assert any("Freeプランは" in w.value and "までです" in w.value for w in at.warning)
+    # アップグレード用のリンクが作られている(Stripeへの実接続はモック済み)
+    assert "checkout_url" in at.session_state
+    assert at.session_state["checkout_url"].startswith("https://stripe.example/")
+
+
+def test_checkout_success_upgrades_plan(no_real_stripe):
+    create_verified_user("tester", "tester@example.com", "pass1234")
+
+    at = make_app()
+    login(at, "tester", "pass1234")
+    for i in range(billing.FREE_MEMO_LIMIT):
+        at.text_input[0].input(f"メモ{i}")
+        [b for b in at.button if b.label == "保存"][0].click().run()
+        at.run()
+    # 「アップグレード」導線を出させ、Checkout Sessionを作らせる
+    at.text_input[0].input("もう1件")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    session_id = at.session_state["checkout_url"].rsplit("/", 1)[-1]
+
+    # Stripe上で支払いが完了した状態を模擬する
+    no_real_stripe[session_id]["payment_status"] = "paid"
+
+    at2 = make_app()
+    at2.query_params["checkout_success"] = "1"
+    at2.query_params["session_id"] = session_id
+    at2.run()
+    assert any("アップグレードが完了しました" in s.value for s in at2.success)
+
+    assert billing.get_plan("tester") == "pro"
+
+
+def test_pro_plan_has_no_limit():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    set_plan("tester", "pro")
+
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    for i in range(billing.FREE_MEMO_LIMIT + 2):
+        at.text_input[0].input(f"メモ{i}")
+        [b for b in at.button if b.label == "保存"][0].click().run()
+        at.run()
+
+    assert any(
+        f"現在 {billing.FREE_MEMO_LIMIT + 2} 件保存されています" in c.value for c in at.caption
+    )
+    assert not any("Freeプランは" in w.value for w in at.warning)
 
 
 def test_admin_dashboard_visible_only_to_admin():
