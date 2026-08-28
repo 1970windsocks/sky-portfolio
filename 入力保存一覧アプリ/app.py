@@ -2,6 +2,7 @@ import streamlit as st
 import os
 
 import auth
+import billing
 import db
 import migrate
 
@@ -125,11 +126,26 @@ def check_login():
     st.stop()
 
 
-# メール確認・パスワード再設定のリンクは、ログイン前でも処理する
+def show_checkout_result():
+    if "checkout_success" in st.query_params:
+        session_id = st.query_params.get("session_id")
+        success, message = billing.confirm_checkout(session_id)
+        st.session_state.flash_message = message
+        st.session_state.flash_is_error = not success
+    elif "checkout_cancel" in st.query_params:
+        st.session_state.flash_message = "アップグレードをキャンセルしました"
+        st.session_state.flash_is_error = False
+    st.query_params.clear()
+    st.rerun()
+
+
+# メール確認・パスワード再設定・決済結果のリンクは、ログイン前でも処理する
 if "verify" in st.query_params:
     show_verify_screen(st.query_params["verify"])
 elif "reset" in st.query_params:
     show_reset_screen(st.query_params["reset"])
+elif "checkout_success" in st.query_params or "checkout_cancel" in st.query_params:
+    show_checkout_result()
 
 check_login()
 
@@ -140,6 +156,7 @@ if col_logout.button("ログアウト", use_container_width=True):
     st.session_state.username = None
     st.session_state.role = None
     st.session_state.editing_id = None
+    st.session_state.pop("checkout_url", None)
     st.rerun()
 st.caption(f"ログイン中: {st.session_state.username} さん")
 
@@ -149,6 +166,15 @@ if st.session_state.role == "admin":
         col1, col2 = st.columns(2)
         col1.metric("登録ユーザー数", stats["user_count"])
         col2.metric("全体の保存件数", stats["memo_count"])
+
+plan = billing.get_plan(st.session_state.username)
+count = billing.memo_count(st.session_state.username)
+at_limit = plan == "free" and count >= billing.FREE_MEMO_LIMIT
+
+if plan == "pro":
+    st.caption(f"プラン: Pro(無制限) ・現在{count}件")
+else:
+    st.caption(f"プラン: Free({billing.FREE_MEMO_LIMIT}件まで) ・現在{count}件")
 
 my_data = db.list_memos(st.session_state.username)
 
@@ -160,10 +186,24 @@ with st.form("add_form", clear_on_submit=True):
 if submitted:
     if text.strip() == "":
         st.warning("何か入力してください")
+    elif at_limit:
+        st.warning(f"Freeプランは{billing.FREE_MEMO_LIMIT}件までです。Proにアップグレードすると無制限になります。")
     else:
         # ② 保存
         db.insert_memo(st.session_state.username, text)
         st.success(f"保存しました: {text}")
+
+if at_limit:
+    # Stripeへの問い合わせを毎回の再描画で行わないよう、セッション内でキャッシュする
+    if "checkout_url" not in st.session_state:
+        st.session_state.checkout_url = billing.create_checkout_session(
+            st.session_state.username, os.environ.get("APP_BASE_URL", "").rstrip("/")
+        )
+    st.link_button(
+        "⭐ Proにアップグレード(月額500円)",
+        st.session_state.checkout_url,
+        use_container_width=True,
+    )
 
 st.divider()
 
