@@ -37,6 +37,8 @@ def send_email(to, subject, body):
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            # User-Agentが無いとCloudflareにボット扱いされ403(error code: 1010)になる
+            "User-Agent": "input-save-app/1.0",
         },
         method="POST",
     )
