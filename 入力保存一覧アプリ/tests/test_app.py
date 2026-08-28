@@ -40,6 +40,8 @@ def no_real_email(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_real_stripe(monkeypatch):
     """テストでは実際にStripeへ接続せず、セッションをメモリ上で模擬する。"""
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_dummy")
+    monkeypatch.setenv("STRIPE_PRICE_ID", "price_dummy")
     sessions = {}
 
     def fake_request(method, path, data=None):
