@@ -1,8 +1,8 @@
+import json
 import os
 import secrets
-import smtplib
+import urllib.request
 from datetime import datetime, timedelta, timezone
-from email.mime.text import MIMEText
 
 import bcrypt
 import psycopg
@@ -22,21 +22,26 @@ def verify_password(password, password_hash):
 
 
 def send_email(to, subject, body):
-    host = os.environ["SMTP_HOST"]
-    port = int(os.environ["SMTP_PORT"])
-    user = os.environ["SMTP_USER"]
-    password = os.environ["SMTP_PASSWORD"]
-    from_addr = os.environ.get("SMTP_FROM", user)
+    # RailwayのFree/Trial/Hobbyプランは outbound SMTP が塞がれているため、
+    # HTTPS(443)で送れるResendのAPIを使う(Railway公式が推奨する方式)。
+    api_key = os.environ["RESEND_API_KEY"]
+    from_addr = os.environ.get("RESEND_FROM", "onboarding@resend.dev")
 
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = to
+    payload = json.dumps(
+        {"from": from_addr, "to": [to], "subject": subject, "text": body}
+    ).encode("utf-8")
 
-    with smtplib.SMTP(host, port, timeout=10) as server:
-        server.starttls()
-        server.login(user, password)
-        server.sendmail(from_addr, [to], msg.as_string())
+    request = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
 
 
 def _base_url():
