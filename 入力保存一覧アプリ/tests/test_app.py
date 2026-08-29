@@ -288,3 +288,100 @@ def test_monthly_plan_caption_shows_month_wording():
     login(at, "tester", "pass1234")
 
     assert any("Free(月" in c.value and "今月" in c.value for c in at.caption)
+
+
+def test_save_with_category_shows_metadata():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("会議メモ")
+    at.text_input[1].input("仕事")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+
+    assert any("会議メモ" in m.value for m in at.markdown)
+    assert any("🏷️ 仕事" in c.value for c in at.caption)
+    assert any("📅 " in c.value for c in at.caption)
+
+
+def test_search_filters_list():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("牛乳を買う")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.text_input[0].input("本を読む")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+
+    at.text_input(key="search_query").input("牛乳").run()
+
+    visible_text = " ".join(m.value for m in at.markdown)
+    assert "牛乳を買う" in visible_text
+    assert "本を読む" not in visible_text
+
+
+def test_category_filter_narrows_list():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("会議メモ")
+    at.text_input[1].input("仕事")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+    at.text_input[0].input("旅行のアイデア")
+    at.text_input[1].input("プライベート")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+
+    at.selectbox(key="category_filter").select("仕事").run()
+
+    visible_text = " ".join(m.value for m in at.markdown)
+    assert "会議メモ" in visible_text
+    assert "旅行のアイデア" not in visible_text
+
+
+def test_sort_order_changes_display_order():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("最初のメモ")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+    at.text_input[0].input("次のメモ")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+
+    # デフォルトは「新しい順」: 後から保存したものが先に表示される
+    texts_newest_first = [m.value for m in at.markdown]
+    assert texts_newest_first.index("次のメモ") < texts_newest_first.index("最初のメモ")
+
+    at.radio(key="sort_order").set_value("古い順").run()
+    texts_oldest_first = [m.value for m in at.markdown]
+    assert texts_oldest_first.index("最初のメモ") < texts_oldest_first.index("次のメモ")
+
+
+def test_text_length_limit_shows_error():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("あ" * 2001)  # app.py の MAX_TEXT_LENGTH(2000)を超える長さ
+    [b for b in at.button if b.label == "保存"][0].click().run()
+
+    assert any("内容が長すぎます" in e.value for e in at.error)
+
+
+def test_category_length_limit_shows_error():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("普通のメモ")
+    at.text_input[1].input("あ" * 51)
+    [b for b in at.button if b.label == "保存"][0].click().run()
+
+    assert any("カテゴリーが長すぎます" in e.value for e in at.error)
