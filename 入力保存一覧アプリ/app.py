@@ -1,4 +1,5 @@
 import csv
+import datetime
 import io
 import os
 
@@ -8,6 +9,9 @@ import auth
 import billing
 import db
 import migrate
+
+MAX_TEXT_LENGTH = 2000
+MAX_CATEGORY_LENGTH = 50
 
 st.set_page_config(page_title="入力保存アプリ", page_icon="📝", layout="centered")
 
@@ -194,16 +198,23 @@ my_data = db.list_memos(st.session_state.username)
 # ① フォーム
 with st.form("add_form", clear_on_submit=True):
     text = st.text_input("内容を入力してください")
+    category = st.text_input("カテゴリー(任意)", placeholder="例: 仕事、アイデア、TODO")
     submitted = st.form_submit_button("保存", use_container_width=True)
 
 if submitted:
     if text.strip() == "":
         st.warning("何か入力してください")
+    elif len(text) > MAX_TEXT_LENGTH:
+        st.error(f"内容が長すぎます(最大{MAX_TEXT_LENGTH}文字、今は{len(text)}文字)。短くして保存してください。")
+    elif len(category) > MAX_CATEGORY_LENGTH:
+        st.error(f"カテゴリーが長すぎます(最大{MAX_CATEGORY_LENGTH}文字、今は{len(category)}文字)。短くして保存してください。")
     elif at_limit:
         st.warning(f"Freeプランは月{billing.FREE_MEMO_LIMIT}件までです。Proにアップグレードすると無制限になります。")
     else:
         # ② 保存
-        db.insert_memo(st.session_state.username, text)
+        db.insert_memo(
+            st.session_state.username, text, category.strip(), datetime.date.today().isoformat()
+        )
         st.success(f"保存しました: {text}")
 
 if at_limit:
@@ -224,22 +235,49 @@ st.divider()
 st.subheader("保存した一覧")
 st.caption(f"現在 {len(my_data)} 件保存されています")
 
+search_query = st.text_input("🔍 キーワードで検索", placeholder="検索したい文字を入力", key="search_query")
+
+col_sort, col_category = st.columns(2)
+sort_order = col_sort.radio(
+    "並び順", ["新しい順", "古い順"], horizontal=True, label_visibility="collapsed", key="sort_order"
+)
+categories = sorted({item["category"] for item in my_data if item["category"]})
+category_filter = col_category.selectbox(
+    "カテゴリーで絞り込み", ["すべて"] + categories, label_visibility="collapsed", key="category_filter"
+)
+
+visible_data = my_data
+if search_query.strip():
+    visible_data = [item for item in visible_data if search_query.strip().lower() in item["text"].lower()]
+if category_filter != "すべて":
+    visible_data = [item for item in visible_data if item["category"] == category_filter]
+visible_data = sorted(visible_data, key=lambda item: item["id"], reverse=(sort_order == "新しい順"))
+
 if not my_data:
     st.write("まだ何も保存されていません")
+elif not visible_data:
+    st.write("検索結果が見つかりませんでした")
 
-for item in my_data:
+for item in visible_data:
     with st.container(border=True):
         if st.session_state.editing_id == item["id"]:
             # ④ 編集中: 入力欄を表示し、保存し直せるようにする
             new_text = st.text_input(
                 "編集", value=item["text"], key=f"edit_{item['id']}", label_visibility="collapsed"
             )
+            new_category = st.text_input(
+                "カテゴリー", value=item["category"], key=f"edit_category_{item['id']}"
+            )
             col1, col2 = st.columns(2)
             if col1.button("💾 保存", key=f"save_{item['id']}", use_container_width=True):
                 if new_text.strip() == "":
                     st.warning("何か入力してください")
+                elif len(new_text) > MAX_TEXT_LENGTH:
+                    st.error(f"内容が長すぎます(最大{MAX_TEXT_LENGTH}文字、今は{len(new_text)}文字)。短くして保存してください。")
+                elif len(new_category) > MAX_CATEGORY_LENGTH:
+                    st.error(f"カテゴリーが長すぎます(最大{MAX_CATEGORY_LENGTH}文字、今は{len(new_category)}文字)。短くして保存してください。")
                 else:
-                    db.update_memo(item["id"], new_text)
+                    db.update_memo(item["id"], new_text, new_category.strip())
                     st.session_state.editing_id = None
                     st.rerun()
             if col2.button("✖️ キャンセル", key=f"cancel_{item['id']}", use_container_width=True):
@@ -248,6 +286,13 @@ for item in my_data:
         else:
             col1, col2, col3, col4 = st.columns([5, 1, 1, 1])
             col1.write(item["text"])
+            meta = []
+            if item["date"]:
+                meta.append(f"📅 {item['date']}")
+            if item["category"]:
+                meta.append(f"🏷️ {item['category']}")
+            if meta:
+                col1.caption(" ｜ ".join(meta))
             if col2.button("⭐" if item["is_favorite"] else "☆", key=f"fav_{item['id']}", help="お気に入り"):
                 db.set_favorite(item["id"], not item["is_favorite"])
                 st.rerun()
