@@ -148,6 +148,7 @@ elif "checkout_success" in st.query_params or "checkout_cancel" in st.query_para
     show_checkout_result()
 
 check_login()
+show_flash()
 
 
 col_title, col_logout = st.columns([5, 1])
@@ -168,11 +169,20 @@ if st.session_state.role == "admin":
         col2.metric("全体の保存件数", stats["memo_count"])
 
 plan = billing.get_plan(st.session_state.username)
+subscription_status = billing.get_subscription_status(st.session_state.username)
 count = billing.memo_count(st.session_state.username)
 at_limit = plan == "free" and count >= billing.FREE_MEMO_LIMIT
 
+if subscription_status == "past_due":
+    st.warning("⚠️ お支払いに失敗しています。カード情報をご確認ください。しばらくはProのままご利用いただけます。")
+
 if plan == "pro":
     st.caption(f"プラン: Pro(無制限) ・現在{count}件")
+    if st.button("解約する", key="cancel_subscription"):
+        success, message = billing.cancel_subscription(st.session_state.username)
+        st.session_state.flash_message = message
+        st.session_state.flash_is_error = not success
+        st.rerun()
 else:
     st.caption(f"プラン: Free({billing.FREE_MEMO_LIMIT}件まで) ・現在{count}件")
 
