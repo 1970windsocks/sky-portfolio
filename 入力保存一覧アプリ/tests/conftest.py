@@ -20,6 +20,8 @@ def clean_db():
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute("TRUNCATE memos RESTART IDENTITY")
         conn.execute("TRUNCATE auth_tokens, users RESTART IDENTITY CASCADE")
+        # 監査ログが残っているとレート制限(直近N分の件数)の判定がテスト間で汚染されるため必ず消す
+        conn.execute("TRUNCATE audit_log RESTART IDENTITY")
     yield
 
 
