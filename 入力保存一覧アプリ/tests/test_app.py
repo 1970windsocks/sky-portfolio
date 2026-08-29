@@ -263,3 +263,28 @@ def test_admin_dashboard_visible_only_to_admin():
     at_user = make_app()
     login(at_user, "staffsan", "pass1234")
     assert not any("管理者ダッシュボード" in e.label for e in at_user.expander)
+
+
+def test_free_plan_csv_export_is_locked():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    assert any("CSVエクスポートはProプラン限定" in c.value for c in at.caption)
+
+
+def test_pro_plan_csv_export_is_not_locked():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    set_plan("tester", "pro")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    assert not any("CSVエクスポートはProプラン限定" in c.value for c in at.caption)
+
+
+def test_monthly_plan_caption_shows_month_wording():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    assert any("Free(月" in c.value and "今月" in c.value for c in at.caption)

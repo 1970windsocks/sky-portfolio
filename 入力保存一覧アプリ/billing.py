@@ -47,10 +47,13 @@ def get_subscription_status(username):
     return row["subscription_status"] if row else "none"
 
 
-def memo_count(username):
+def monthly_memo_count(username):
+    """今月(カレンダー月)に保存された件数。月が変われば自動的にリセットされる。"""
     with _connect() as conn:
         row = conn.execute(
-            "SELECT count(*) AS c FROM memos WHERE owner = %s", (username,)
+            "SELECT count(*) AS c FROM memos "
+            "WHERE owner = %s AND created_at >= date_trunc('month', now())",
+            (username,),
         ).fetchone()
     return row["c"]
 

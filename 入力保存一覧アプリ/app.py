@@ -1,5 +1,8 @@
-import streamlit as st
+import csv
+import io
 import os
+
+import streamlit as st
 
 import auth
 import billing
@@ -170,21 +173,21 @@ if st.session_state.role == "admin":
 
 plan = billing.get_plan(st.session_state.username)
 subscription_status = billing.get_subscription_status(st.session_state.username)
-count = billing.memo_count(st.session_state.username)
+count = billing.monthly_memo_count(st.session_state.username)
 at_limit = plan == "free" and count >= billing.FREE_MEMO_LIMIT
 
 if subscription_status == "past_due":
     st.warning("⚠️ お支払いに失敗しています。カード情報をご確認ください。しばらくはProのままご利用いただけます。")
 
 if plan == "pro":
-    st.caption(f"プラン: Pro(無制限) ・現在{count}件")
+    st.caption(f"プラン: Pro(無制限) ・今月{count}件")
     if st.button("解約する", key="cancel_subscription"):
         success, message = billing.cancel_subscription(st.session_state.username)
         st.session_state.flash_message = message
         st.session_state.flash_is_error = not success
         st.rerun()
 else:
-    st.caption(f"プラン: Free({billing.FREE_MEMO_LIMIT}件まで) ・現在{count}件")
+    st.caption(f"プラン: Free(月{billing.FREE_MEMO_LIMIT}件まで) ・今月{count}件")
 
 my_data = db.list_memos(st.session_state.username)
 
@@ -197,7 +200,7 @@ if submitted:
     if text.strip() == "":
         st.warning("何か入力してください")
     elif at_limit:
-        st.warning(f"Freeプランは{billing.FREE_MEMO_LIMIT}件までです。Proにアップグレードすると無制限になります。")
+        st.warning(f"Freeプランは月{billing.FREE_MEMO_LIMIT}件までです。Proにアップグレードすると無制限になります。")
     else:
         # ② 保存
         db.insert_memo(st.session_state.username, text)
@@ -255,3 +258,24 @@ for item in my_data:
                 # ④ 削除
                 db.delete_memo(item["id"])
                 st.rerun()
+
+st.divider()
+
+# ⑤ CSVエクスポート(Pro限定の機能ゲート)
+if plan == "pro":
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["id", "text", "category", "date", "is_favorite"])
+    for item in my_data:
+        writer.writerow(
+            [item["id"], item["text"], item["category"], item["date"], item["is_favorite"]]
+        )
+    st.download_button(
+        "📥 CSVでエクスポート",
+        data=buffer.getvalue().encode("utf-8-sig"),
+        file_name="memos.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+else:
+    st.caption("🔒 CSVエクスポートはProプラン限定の機能です")

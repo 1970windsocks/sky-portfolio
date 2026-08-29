@@ -130,3 +130,36 @@ def test_cancel_subscription_without_active_subscription_fails():
     success, message = billing.cancel_subscription("tester")
 
     assert not success
+
+
+def test_monthly_memo_count_ignores_previous_months():
+    create_verified_user("tester", "tester@example.com", "pass1234", plan="free")
+
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        # 先月分: 3件(今月の集計には含まれない)
+        conn.execute(
+            "INSERT INTO memos (owner, text, created_at) "
+            "SELECT 'tester', 'old' || i, now() - interval '1 month' "
+            "FROM generate_series(1, 3) AS i"
+        )
+        # 今月分: 2件
+        conn.execute(
+            "INSERT INTO memos (owner, text, created_at) "
+            "SELECT 'tester', 'new' || i, now() "
+            "FROM generate_series(1, 2) AS i"
+        )
+
+    assert billing.monthly_memo_count("tester") == 2
+
+
+def test_monthly_memo_count_is_per_user():
+    create_verified_user("tester_a", "a@example.com", "pass1234", plan="free", customer_id="cus_a", subscription_id=None)
+    create_verified_user("tester_b", "b@example.com", "pass1234", plan="free", customer_id="cus_b", subscription_id=None)
+
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        conn.execute("INSERT INTO memos (owner, text) VALUES ('tester_a', 'a1')")
+        conn.execute("INSERT INTO memos (owner, text) VALUES ('tester_a', 'a2')")
+        conn.execute("INSERT INTO memos (owner, text) VALUES ('tester_b', 'b1')")
+
+    assert billing.monthly_memo_count("tester_a") == 2
+    assert billing.monthly_memo_count("tester_b") == 1
