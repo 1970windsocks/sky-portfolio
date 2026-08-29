@@ -298,6 +298,7 @@ def test_save_with_category_shows_metadata():
     at.text_input[0].input("会議メモ")
     at.text_input[1].input("仕事")
     [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
 
     assert any("会議メモ" in m.value for m in at.markdown)
     assert any("🏷️ 仕事" in c.value for c in at.caption)
@@ -329,9 +330,11 @@ def test_category_filter_narrows_list():
     at.text_input[0].input("会議メモ")
     at.text_input[1].input("仕事")
     [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
     at.text_input[0].input("旅行のアイデア")
     at.text_input[1].input("プライベート")
     [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
 
     at.selectbox(key="category_filter").select("仕事").run()
 
@@ -347,8 +350,10 @@ def test_sort_order_changes_display_order():
 
     at.text_input[0].input("最初のメモ")
     [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
     at.text_input[0].input("次のメモ")
     [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
 
     # デフォルトは「新しい順」: 後から保存したものが先に表示される
     texts_newest_first = [m.value for m in at.markdown]
