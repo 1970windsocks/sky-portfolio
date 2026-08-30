@@ -6,6 +6,7 @@ import os
 import streamlit as st
 
 import auth
+import audit
 import billing
 import db
 import migrate
@@ -175,6 +176,13 @@ if st.session_state.role == "admin":
         col1.metric("登録ユーザー数", stats["user_count"])
         col2.metric("全体の保存件数", stats["memo_count"])
 
+        st.caption("📋 直近の監査ログ")
+        for entry in audit.recent_entries(20):
+            who = entry["username"] or "(不明)"
+            when = entry["created_at"].strftime("%Y-%m-%d %H:%M")
+            detail = f" ({entry['detail']})" if entry["detail"] else ""
+            st.text(f"{when}  {who}  {entry['action']}{detail}")
+
 plan = billing.get_plan(st.session_state.username)
 subscription_status = billing.get_subscription_status(st.session_state.username)
 count = billing.monthly_memo_count(st.session_state.username)
@@ -277,7 +285,9 @@ for item in visible_data:
                 elif len(new_category) > MAX_CATEGORY_LENGTH:
                     st.error(f"カテゴリーが長すぎます(最大{MAX_CATEGORY_LENGTH}文字、今は{len(new_category)}文字)。短くして保存してください。")
                 else:
-                    db.update_memo(item["id"], new_text, new_category.strip())
+                    db.update_memo(
+                        item["id"], st.session_state.username, new_text, new_category.strip()
+                    )
                     st.session_state.editing_id = None
                     st.rerun()
             if col2.button("✖️ キャンセル", key=f"cancel_{item['id']}", use_container_width=True):
@@ -294,14 +304,14 @@ for item in visible_data:
             if meta:
                 col1.caption(" ｜ ".join(meta))
             if col2.button("⭐" if item["is_favorite"] else "☆", key=f"fav_{item['id']}", help="お気に入り"):
-                db.set_favorite(item["id"], not item["is_favorite"])
+                db.set_favorite(item["id"], st.session_state.username, not item["is_favorite"])
                 st.rerun()
             if col3.button("✏️", key=f"edit_btn_{item['id']}", help="編集"):
                 st.session_state.editing_id = item["id"]
                 st.rerun()
             if col4.button("🗑️", key=f"del_{item['id']}", help="削除"):
                 # ④ 削除
-                db.delete_memo(item["id"])
+                db.delete_memo(item["id"], st.session_state.username)
                 st.rerun()
 
 st.divider()
