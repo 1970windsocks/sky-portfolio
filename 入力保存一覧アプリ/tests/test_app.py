@@ -9,8 +9,10 @@ APP_DIR = Path(__file__).resolve().parent.parent
 APP_PATH = str(APP_DIR / "app.py")
 
 sys.path.insert(0, str(APP_DIR))
+import audit  # noqa: E402
 import auth  # noqa: E402
 import billing  # noqa: E402
+import db  # noqa: E402
 
 
 def set_plan(username, plan):
@@ -385,3 +387,81 @@ def test_category_length_limit_shows_error():
     [b for b in at.button if b.label == "保存"][0].click().run()
 
     assert any("カテゴリーが長すぎます" in e.value for e in at.error)
+
+
+def test_cross_tenant_cannot_mutate_via_direct_id():
+    """他人のメモIDを直接指定しても更新・削除・お気に入り切替ができないことを確認する(テナント越境ゼロの再確認)。"""
+    create_verified_user("tenant_a", "a2@example.com", "passA1234")
+    create_verified_user("tenant_b", "b2@example.com", "passB1234")
+
+    db.insert_memo("tenant_a", "Aだけの秘密メモ")
+    memo_id = db.list_memos("tenant_a")[0]["id"]
+
+    # Bが直接IDを指定しても、DB層のowner検証で無視される
+    db.update_memo(memo_id, "tenant_b", "書き換えました")
+    db.delete_memo(memo_id, "tenant_b")
+    db.set_favorite(memo_id, "tenant_b", True)
+
+    remaining = db.list_memos("tenant_a")
+    assert len(remaining) == 1
+    assert remaining[0]["text"] == "Aだけの秘密メモ"
+    assert remaining[0]["is_favorite"] is False
+
+
+def test_login_locks_out_after_repeated_failures():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+
+    for _ in range(5):
+        login(at, "tester", "wrongpass")
+        assert any("違います" in e.value for e in at.error)
+
+    # 直近の失敗が多すぎるため、正しいパスワードでもロックアウトされる
+    login(at, "tester", "pass1234")
+    assert any("試行回数が多すぎます" in e.value for e in at.error)
+    assert at.session_state["username"] is None
+
+
+def test_signup_and_login_are_logged(no_real_email):
+    at = make_app()
+    at.run()
+    at.text_input(key="signup_username").input("newuser")
+    at.text_input(key="signup_email").input("newuser@example.com")
+    at.text_input(key="signup_password").input("password123")
+    [b for b in at.button if b.label == "登録する"][0].click().run()
+
+    entries = audit.recent_entries()
+    assert any(e["action"] == "signup" and e["username"] == "newuser" for e in entries)
+
+    link = extract_link(no_real_email, "?verify=")
+    token = link.split("?verify=")[1]
+    at2 = make_app()
+    at2.query_params["verify"] = token
+    at2.run()
+
+    login(at2, "newuser", "password123")
+    assert at2.session_state["username"] == "newuser"
+
+    entries = audit.recent_entries()
+    assert any(e["action"] == "login_success" and e["username"] == "newuser" for e in entries)
+
+
+def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
+    create_verified_user("tester", "tester@example.com", "oldpass123")
+    # create_verified_user自体が確認メールを1通送っているので、ここが起点の件数になる
+    sent_before_reset_requests = len(no_real_email)
+
+    at = make_app()
+    at.run()
+
+    for _ in range(3):
+        at.text_input(key="forgot_email").input("tester@example.com")
+        [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
+
+    assert len(no_real_email) == sent_before_reset_requests + 3  # 3回までは送られる
+
+    at.text_input(key="forgot_email").input("tester@example.com")
+    [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
+
+    # 4回目は送信枠を超えたため、実際には送られない(文言は変わらない)
+    assert len(no_real_email) == sent_before_reset_requests + 3

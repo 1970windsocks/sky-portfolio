@@ -9,6 +9,8 @@ import urllib.request
 import psycopg
 from psycopg.rows import dict_row
 
+import audit
+
 FREE_MEMO_LIMIT = 5
 
 API_BASE = "https://api.stripe.com/v1"
@@ -93,6 +95,7 @@ def confirm_checkout(session_id):
             "UPDATE users SET plan = 'pro', stripe_customer_id = %s, stripe_subscription_id = %s WHERE username = %s",
             (session.get("customer"), session.get("subscription"), username),
         )
+    audit.log_action(username, "plan_upgraded")
     return True, "Proプランへのアップグレードが完了しました🎉 もう一度ログインしてください。"
 
 
@@ -120,7 +123,7 @@ def verify_stripe_signature(payload, sig_header, secret):
     return json.loads(payload)
 
 
-def _update_by_customer(customer_id, plan=None, subscription_status=None):
+def _update_by_customer(customer_id, action, plan=None, subscription_status=None):
     if not customer_id:
         return
     sets, params = [], []
@@ -134,10 +137,12 @@ def _update_by_customer(customer_id, plan=None, subscription_status=None):
         return
     params.append(customer_id)
     with _connect() as conn:
-        conn.execute(
-            f"UPDATE users SET {', '.join(sets)} WHERE stripe_customer_id = %s",
+        row = conn.execute(
+            f"UPDATE users SET {', '.join(sets)} WHERE stripe_customer_id = %s RETURNING username",
             params,
-        )
+        ).fetchone()
+    if row:
+        audit.log_action(row["username"], action, detail=f"customer={customer_id}")
 
 
 def apply_subscription_event(event):
@@ -147,12 +152,12 @@ def apply_subscription_event(event):
     customer_id = data.get("customer")
 
     if event_type == "invoice.payment_succeeded":
-        _update_by_customer(customer_id, plan="pro", subscription_status="active")
+        _update_by_customer(customer_id, "invoice.payment_succeeded", plan="pro", subscription_status="active")
     elif event_type == "invoice.payment_failed":
         # すぐには止めない: プランはproのまま維持し、状態だけpast_dueにして猶予を与える
-        _update_by_customer(customer_id, subscription_status="past_due")
+        _update_by_customer(customer_id, "invoice.payment_failed", subscription_status="past_due")
     elif event_type == "customer.subscription.deleted":
-        _update_by_customer(customer_id, plan="free", subscription_status="canceled")
+        _update_by_customer(customer_id, "customer.subscription.deleted", plan="free", subscription_status="canceled")
 
 
 def cancel_subscription(username):
@@ -172,4 +177,5 @@ def cancel_subscription(username):
             "UPDATE users SET plan = 'free', subscription_status = 'canceled' WHERE username = %s",
             (username,),
         )
+    audit.log_action(username, "plan_canceled")
     return True, "解約しました。プランはFreeに戻りました。"
