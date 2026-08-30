@@ -465,3 +465,33 @@ def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
 
     # 4回目は送信枠を超えたため、実際には送られない(文言は変わらない)
     assert len(no_real_email) == sent_before_reset_requests + 3
+
+
+def test_onboarding_message_shown_until_first_save():
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    assert any("はじめての方へ" in i.value for i in at.info)
+
+    at.text_input[0].input("最初のメモ")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+
+    assert not any("はじめての方へ" in i.value for i in at.info)
+
+
+def test_admin_dashboard_shows_customer_list(monkeypatch):
+    import ops
+
+    monkeypatch.setattr(ops, "uptime_summary", lambda: None)
+
+    create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
+    create_verified_user("staffsan", "staff@example.com", "pass1234", role="user")
+
+    at = make_app()
+    login(at, "bosssan", "pass1234")
+
+    table_text = " ".join(str(df.value) for df in at.dataframe)
+    assert "bosssan" in table_text
+    assert "staffsan" in table_text

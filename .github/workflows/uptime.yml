@@ -1,5 +1,8 @@
 name: 本番URLの死活監視
 
+# 目標稼働率(SLO): 99.5%以上
+# 15分おきに本番URLへアクセスし、異常があればResend経由でメール通知する。
+
 on:
   schedule:
     # 15分おき
@@ -19,3 +22,17 @@ jobs:
             echo "本番URLが異常な応答を返しました(status=$status)"
             exit 1
           fi
+
+      - name: 失敗時にメールで通知
+        if: failure()
+        run: |
+          curl -s https://api.resend.com/emails \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: input-save-app/1.0" \
+            -d "{
+              \"from\": \"onboarding@resend.dev\",
+              \"to\": [\"${{ secrets.ALERT_EMAIL }}\"],
+              \"subject\": \"【緊急】入力保存アプリの本番URLが応答していません\",
+              \"text\": \"死活監視で本番URLの異常を検知しました。GitHub Actionsのログを確認してください。\\n\\nhttps://github.com/1970windsocks/sky-portfolio/actions\"
+            }"
