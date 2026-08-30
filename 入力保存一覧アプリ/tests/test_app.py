@@ -448,6 +448,9 @@ def test_signup_and_login_are_logged(no_real_email):
 
 def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
     create_verified_user("tester", "tester@example.com", "oldpass123")
+    # create_verified_user自体が確認メールを1通送っているので、ここが起点の件数になる
+    sent_before_reset_requests = len(no_real_email)
+
     at = make_app()
     at.run()
 
@@ -455,9 +458,10 @@ def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
         at.text_input(key="forgot_email").input("tester@example.com")
         [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
 
-    assert len(no_real_email) == 3  # 3回までは送られる
+    assert len(no_real_email) == sent_before_reset_requests + 3  # 3回までは送られる
 
     at.text_input(key="forgot_email").input("tester@example.com")
     [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
 
-    assert len(no_real_email) == 3  # 4回目は送信枠を超えたため、実際には送られない(文言は変わらない)
+    # 4回目は送信枠を超えたため、実際には送られない(文言は変わらない)
+    assert len(no_real_email) == sent_before_reset_requests + 3
