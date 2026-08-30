@@ -196,3 +196,16 @@ def admin_stats():
         user_count = conn.execute("SELECT count(*) AS c FROM users").fetchone()["c"]
         memo_count = conn.execute("SELECT count(*) AS c FROM memos").fetchone()["c"]
     return {"user_count": user_count, "memo_count": memo_count}
+
+
+def list_customers():
+    """運営が顧客対応するための一覧。ユーザー名・メール・プラン・課金状態・登録日・保存件数を返す。"""
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT u.username, u.email, u.plan, u.subscription_status, u.created_at, "
+            "count(m.id) AS memo_count "
+            "FROM users u LEFT JOIN memos m ON m.owner = u.username "
+            "GROUP BY u.id "
+            "ORDER BY u.created_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]

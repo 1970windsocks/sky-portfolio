@@ -10,6 +10,7 @@ import audit
 import billing
 import db
 import migrate
+import ops
 
 MAX_TEXT_LENGTH = 2000
 MAX_CATEGORY_LENGTH = 50
@@ -176,6 +177,32 @@ if st.session_state.role == "admin":
         col1.metric("登録ユーザー数", stats["user_count"])
         col2.metric("全体の保存件数", stats["memo_count"])
 
+        st.caption("🩺 本番の稼働状況")
+        try:
+            summary = ops.uptime_summary()
+        except Exception:
+            summary = None
+        if summary is None:
+            st.caption("まだ監視データがありません")
+        else:
+            status_icon = "✅" if summary["meets_slo"] else "⚠️"
+            st.metric(
+                f"{status_icon} 稼働率(直近{summary['total']}回の死活監視)",
+                f"{summary['percentage']:.1f}%",
+                help=f"目標SLO: {summary['slo_target']}%以上",
+            )
+
+        st.caption("👥 顧客一覧")
+        customer_query = st.text_input(
+            "ユーザー名で絞り込み", placeholder="ユーザー名の一部を入力", key="customer_query"
+        )
+        customers = auth.list_customers()
+        if customer_query.strip():
+            customers = [
+                c for c in customers if customer_query.strip().lower() in c["username"].lower()
+            ]
+        st.dataframe(customers, use_container_width=True, hide_index=True)
+
         st.caption("📋 直近の監査ログ")
         for entry in audit.recent_entries(20):
             who = entry["username"] or "(不明)"
@@ -262,7 +289,12 @@ if category_filter != "すべて":
 visible_data = sorted(visible_data, key=lambda item: item["id"], reverse=(sort_order == "新しい順"))
 
 if not my_data:
-    st.write("まだ何も保存されていません")
+    st.info(
+        "👋 **はじめての方へ**\n\n"
+        "1. 上の「内容を入力してください」に書きたいことを入力して「保存」を押してみましょう\n"
+        "2. カテゴリーを付けたり、検索・並び替えで見返しやすく整理できます\n"
+        "3. 月5件を超えたらProプランで無制限に保存できるようになります"
+    )
 elif not visible_data:
     st.write("検索結果が見つかりませんでした")
 
