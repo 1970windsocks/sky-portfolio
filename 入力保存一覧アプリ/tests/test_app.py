@@ -495,3 +495,30 @@ def test_admin_dashboard_shows_customer_list(monkeypatch):
     table_text = " ".join(str(df.value) for df in at.dataframe)
     assert "bosssan" in table_text
     assert "staffsan" in table_text
+
+
+def test_terms_page_is_public():
+    at = make_app()
+    at.query_params["terms"] = "1"
+    at.run()
+    assert any("利用規約" in h.value for h in at.subheader)
+
+
+def test_tokushoho_page_is_public():
+    at = make_app()
+    at.query_params["tokushoho"] = "1"
+    at.run()
+    assert any("特定商取引法に基づく表記" in h.value for h in at.subheader)
+
+
+def test_privacy_page_is_public():
+    at = make_app()
+    at.query_params["privacy"] = "1"
+    at.run()
+    assert any("プライバシーポリシー" in h.value for h in at.subheader)
+
+
+def test_login_screen_has_legal_links():
+    at = make_app()
+    at.run()
+    assert any("利用規約" in c.value for c in at.caption)

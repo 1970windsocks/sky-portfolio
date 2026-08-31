@@ -9,6 +9,7 @@ import auth
 import audit
 import billing
 import db
+import legal
 import migrate
 import ops
 
@@ -132,6 +133,22 @@ def check_login():
                 else:
                     st.error(message)
 
+    st.divider()
+    st.caption(
+        "[利用規約](?terms=1) ｜ [特定商取引法に基づく表記](?tokushoho=1) ｜ [プライバシーポリシー](?privacy=1)"
+    )
+
+    st.stop()
+
+
+def show_legal_screen(title, text):
+    st.title("📝 入力保存アプリ")
+    st.subheader(title)
+    st.markdown(text)
+    st.divider()
+    if st.button("← ログイン画面に戻る"):
+        st.query_params.clear()
+        st.rerun()
     st.stop()
 
 
@@ -148,13 +165,19 @@ def show_checkout_result():
     st.rerun()
 
 
-# メール確認・パスワード再設定・決済結果のリンクは、ログイン前でも処理する
+# メール確認・パスワード再設定・決済結果・法務ページのリンクは、ログイン前でも処理する
 if "verify" in st.query_params:
     show_verify_screen(st.query_params["verify"])
 elif "reset" in st.query_params:
     show_reset_screen(st.query_params["reset"])
 elif "checkout_success" in st.query_params or "checkout_cancel" in st.query_params:
     show_checkout_result()
+elif "terms" in st.query_params:
+    show_legal_screen("利用規約", legal.TERMS_TEXT)
+elif "tokushoho" in st.query_params:
+    show_legal_screen("特定商取引法に基づく表記", legal.TOKUSHOHO_TEXT)
+elif "privacy" in st.query_params:
+    show_legal_screen("プライバシーポリシー", legal.PRIVACY_TEXT)
 
 check_login()
 show_flash()
