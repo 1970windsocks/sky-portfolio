@@ -265,7 +265,7 @@ account = billing.get_account_summary(st.session_state.username)
 plan = account["plan"]
 subscription_status = account["subscription_status"]
 count = account["monthly_count"]
-at_limit = False  # 第50課題: わざと壊す実験(あとで元に戻す)
+at_limit = plan == "free" and count >= billing.FREE_MEMO_LIMIT
 
 if subscription_status == "past_due":
     st.warning("⚠️ お支払いに失敗しています。カード情報をご確認ください。しばらくはProのままご利用いただけます。")
