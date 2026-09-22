@@ -199,13 +199,23 @@ def admin_stats():
 
 
 def list_customers():
-    """運営が顧客対応するための一覧。ユーザー名・メール・プラン・課金状態・登録日・保存件数を返す。"""
+    """運営が顧客対応するための一覧。ユーザー名・メール・プラン・課金状態・登録日・保存件数・ログイン回数を返す。
+
+    memosとaudit_logはどちらもusersに対して1対多。両方を素朴にLEFT JOINしてから
+    GROUP BYすると、行の掛け算(例: メモ3件×ログイン5件=15行)が起きて件数が水増しされる。
+    それぞれを先に集計してから結合することで、この罠を避けている。
+    """
     with _connect() as conn:
         rows = conn.execute(
             "SELECT u.username, u.email, u.plan, u.subscription_status, u.created_at, "
-            "count(m.id) AS memo_count "
-            "FROM users u LEFT JOIN memos m ON m.owner = u.username "
-            "GROUP BY u.id "
+            "COALESCE(m.memo_count, 0) AS memo_count, "
+            "COALESCE(a.login_count, 0) AS login_count "
+            "FROM users u "
+            "LEFT JOIN (SELECT owner, count(*) AS memo_count FROM memos GROUP BY owner) m "
+            "  ON m.owner = u.username "
+            "LEFT JOIN (SELECT username, count(*) AS login_count FROM audit_log "
+            "           WHERE action = 'login_success' GROUP BY username) a "
+            "  ON a.username = u.username "
             "ORDER BY u.created_at DESC"
         ).fetchall()
     return [dict(row) for row in rows]

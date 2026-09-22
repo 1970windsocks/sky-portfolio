@@ -11,7 +11,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import db  # noqa: E402
+import psycopg  # noqa: E402
+
 import migrate  # noqa: E402
 
 DATA_FILE = Path(__file__).resolve().parent.parent / "data.json"
@@ -28,15 +29,32 @@ def main():
     with open(DATA_FILE, "r", encoding="utf-8") as f:
         items = json.load(f)
 
-    for item in items:
-        db.insert_memo(
-            owner=item.get("owner", ""),
-            text=item.get("text", ""),
-            category=item.get("category", ""),
-            date=item.get("date", ""),
+    if not items:
+        print("取り込むデータがありません。")
+        return
+
+    # 直す前: db.insert_memo()をitemの数だけ呼ぶと、その回数だけ接続を開き直していた
+    # (N+1と同じ落とし穴。1件ごとに接続・INSERT・切断を繰り返すため件数に比例して遅くなる)。
+    # 直した後: 接続を1回だけ開き、全件を1本のINSERT文にまとめて取り込む。
+    rows = [
+        (
+            item.get("owner", ""),
+            item.get("text", ""),
+            item.get("category", ""),
+            item.get("date", ""),
+        )
+        for item in items
+    ]
+    placeholders = ", ".join(["(%s, %s, %s, %s)"] * len(rows))
+    flat_params = [value for row in rows for value in row]
+
+    with psycopg.connect(database_url) as conn:
+        conn.execute(
+            f"INSERT INTO memos (owner, text, category, date) VALUES {placeholders}",
+            flat_params,
         )
 
-    print(f"{len(items)} 件を取り込みました。")
+    print(f"{len(items)} 件を取り込みました。(接続1回・INSERT1回)")
 
 
 if __name__ == "__main__":

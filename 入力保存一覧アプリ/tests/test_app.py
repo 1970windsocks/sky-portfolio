@@ -254,6 +254,46 @@ def test_pro_plan_has_no_limit():
     assert not any("Freeプランは" in w.value for w in at.warning)
 
 
+def test_downgraded_user_is_blocked_after_subscription_canceled_webhook():
+    """第50課題: このアプリで一番大事な機能=課金の払い戻し保護をテストする。
+
+    Proの間に月5件を超えて保存したユーザーが、Stripeから解約イベント
+    (customer.subscription.deleted)を受けてFreeへ落とされたら、以後は
+    実際の画面操作でも新規保存がブロックされることを確認する。
+    ここが壊れると「解約されたのに無制限に使い続けられる」という
+    お金に直結する不具合になるため、最優先でテストすべき機能。
+    """
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        conn.execute(
+            "UPDATE users SET plan = 'pro', stripe_customer_id = %s WHERE username = %s",
+            ("cus_downgrade_test", "tester"),
+        )
+
+    at = make_app()
+    login(at, "tester", "pass1234")
+    for i in range(billing.FREE_MEMO_LIMIT + 3):
+        at.text_input[0].input(f"メモ{i}")
+        [b for b in at.button if b.label == "保存"][0].click().run()
+        at.run()
+    assert not any("Freeプランは" in w.value for w in at.warning)  # Pro中はまだブロックされない
+
+    # Stripeから解約イベントが届いた状態を模擬する(webhook_server.pyが実際に呼ぶのと同じ関数)
+    billing.apply_subscription_event(
+        {
+            "type": "customer.subscription.deleted",
+            "data": {"object": {"customer": "cus_downgrade_test"}},
+        }
+    )
+
+    at2 = make_app()
+    login(at2, "tester", "pass1234")
+    at2.text_input[0].input("解約後の1件")
+    [b for b in at2.button if b.label == "保存"][0].click().run()
+
+    assert any("Freeプランは" in w.value and "までです" in w.value for w in at2.warning)
+
+
 def test_admin_dashboard_visible_only_to_admin():
     create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
     create_verified_user("staffsan", "staff@example.com", "pass1234", role="user")
@@ -522,3 +562,58 @@ def test_login_screen_has_legal_links():
     at = make_app()
     at.run()
     assert any("利用規約" in c.value for c in at.caption)
+
+
+def test_admin_dashboard_caches_uptime_summary_across_reruns(monkeypatch):
+    """第48課題: 画面のどこかを操作するたびにStreamlit全体が再実行されても、
+    GitHubへの実際の問い合わせ(ops.uptime_summary)は使い回されて増えないことを確認する。"""
+    import ops
+
+    call_count = {"n": 0}
+
+    def fake_uptime_summary():
+        call_count["n"] += 1
+        return {
+            "total": 10,
+            "success": 10,
+            "percentage": 100.0,
+            "slo_target": 99.5,
+            "meets_slo": True,
+        }
+
+    monkeypatch.setattr(ops, "uptime_summary", fake_uptime_summary)
+    create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
+
+    at = make_app()
+    login(at, "bosssan", "pass1234")
+    assert call_count["n"] == 1
+
+    # 管理画面と直接関係ない操作でも、Streamlitはスクリプト全体を再実行する
+    at.text_input(key="customer_query").input("bo").run()
+
+    assert call_count["n"] == 1, "キャッシュが効いていれば2回目はGitHubへ問い合わせないはず"
+
+
+def test_migrations_are_checked_only_once_across_reruns(monkeypatch):
+    """第49課題: マイグレーション確認が @st.cache_resource で1回だけになり、
+    以後の再実行では呼ばれないことを確認する。"""
+    import migrate
+
+    call_count = {"n": 0}
+    original = migrate.run_pending_migrations
+
+    def counting_run_pending_migrations(database_url):
+        call_count["n"] += 1
+        return original(database_url)
+
+    monkeypatch.setattr(migrate, "run_pending_migrations", counting_run_pending_migrations)
+
+    create_verified_user("tester", "tester@example.com", "pass1234")
+
+    at = make_app()
+    login(at, "tester", "pass1234")
+    assert call_count["n"] == 1
+
+    at.text_input[0].input("何か入力").run()
+
+    assert call_count["n"] == 1, "キャッシュが効いていれば2回目はマイグレーション確認をしないはず"

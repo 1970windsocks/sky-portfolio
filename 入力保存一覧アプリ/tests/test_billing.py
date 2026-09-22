@@ -163,3 +163,26 @@ def test_monthly_memo_count_is_per_user():
 
     assert billing.monthly_memo_count("tester_a") == 2
     assert billing.monthly_memo_count("tester_b") == 1
+
+
+def test_get_account_summary_matches_individual_calls():
+    """第49課題: 3回接続していたget_plan/get_subscription_status/monthly_memo_countを
+    1回にまとめたget_account_summary()が、同じ値を返すことを確認する。"""
+    create_verified_user("tester", "tester@example.com", "pass1234", plan="pro")
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        conn.execute("UPDATE users SET subscription_status = 'past_due' WHERE username = 'tester'")
+        conn.execute("INSERT INTO memos (owner, text) VALUES ('tester', 'm1')")
+
+    summary = billing.get_account_summary("tester")
+
+    assert summary == {
+        "plan": billing.get_plan("tester"),
+        "subscription_status": billing.get_subscription_status("tester"),
+        "monthly_count": billing.monthly_memo_count("tester"),
+    }
+    assert summary == {"plan": "pro", "subscription_status": "past_due", "monthly_count": 1}
+
+
+def test_get_account_summary_defaults_for_unknown_user():
+    summary = billing.get_account_summary("no_such_user")
+    assert summary == {"plan": "free", "subscription_status": "none", "monthly_count": 0}

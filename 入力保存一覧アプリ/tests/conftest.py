@@ -4,6 +4,7 @@ from pathlib import Path
 
 import psycopg
 import pytest
+import streamlit as st
 
 APP_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(APP_DIR))
@@ -22,6 +23,15 @@ def clean_db():
         conn.execute("TRUNCATE auth_tokens, users RESTART IDENTITY CASCADE")
         # 監査ログが残っているとレート制限(直近N分の件数)の判定がテスト間で汚染されるため必ず消す
         conn.execute("TRUNCATE audit_log RESTART IDENTITY")
+    yield
+
+
+@pytest.fixture(autouse=True)
+def clear_streamlit_cache():
+    """app.py の @st.cache_data(uptime要約など)・@st.cache_resource(マイグレーション確認)が
+    前のテストの結果を引きずらないよう、毎テスト開始前にキャッシュを消す。"""
+    st.cache_data.clear()
+    st.cache_resource.clear()
     yield
 
 
