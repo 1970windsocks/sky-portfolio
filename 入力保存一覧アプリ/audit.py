@@ -9,8 +9,18 @@ def _connect():
     return psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
 
 
-def log_action(username, action, detail=""):
-    """「誰が・いつ・何をしたか」を記録する。usernameは不明な場合Noneでよい。"""
+def log_action(username, action, detail="", conn=None):
+    """「誰が・いつ・何をしたか」を記録する。usernameは不明な場合Noneでよい。
+
+    conn: 呼び出し側が既に開いている接続を渡すと、そのトランザクションに相乗りする
+    (呼び出し側のUPDATE等と一緒にコミット/ロールバックされる)。省略時は単独で接続・コミットする。
+    """
+    if conn is not None:
+        conn.execute(
+            "INSERT INTO audit_log (username, action, detail) VALUES (%s, %s, %s)",
+            (username, action, detail),
+        )
+        return
     with _connect() as conn:
         conn.execute(
             "INSERT INTO audit_log (username, action, detail) VALUES (%s, %s, %s)",

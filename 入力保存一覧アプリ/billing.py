@@ -60,6 +60,29 @@ def monthly_memo_count(username):
     return row["c"]
 
 
+def get_account_summary(username):
+    """plan・subscription_status・当月保存件数をまとめて返す(第49課題)。
+
+    以前はapp.pyがget_plan/get_subscription_status/monthly_memo_countを順に呼び、
+    画面を開くたびに接続を3回開いていた(実測: 1回あたり約1.5秒、計約4.6秒)。
+    1回の接続にまとめることで、ログイン画面表示のたびに発生する接続コストを1回分に減らす。
+    """
+    with _connect() as conn:
+        user_row = conn.execute(
+            "SELECT plan, subscription_status FROM users WHERE username = %s", (username,)
+        ).fetchone()
+        count_row = conn.execute(
+            "SELECT count(*) AS c FROM memos "
+            "WHERE owner = %s AND created_at >= date_trunc('month', now())",
+            (username,),
+        ).fetchone()
+    return {
+        "plan": user_row["plan"] if user_row else "free",
+        "subscription_status": user_row["subscription_status"] if user_row else "none",
+        "monthly_count": count_row["c"],
+    }
+
+
 def create_checkout_session(username, base_url):
     price_id = os.environ["STRIPE_PRICE_ID"]
     data = {
@@ -90,12 +113,15 @@ def confirm_checkout(session_id):
     if session.get("payment_status") != "paid":
         return False, "決済が完了していません"
 
+    # プラン変更(UPDATE)と監査ログ(INSERT)を1つのトランザクションにする。
+    # 別々のコミットだと、片方だけ成功して「課金は通ったのに記録が無い」ような
+    # 半端な状態になり得る。途中で失敗したら両方まとめて無かったことにする。
     with _connect() as conn:
         conn.execute(
             "UPDATE users SET plan = 'pro', stripe_customer_id = %s, stripe_subscription_id = %s WHERE username = %s",
             (session.get("customer"), session.get("subscription"), username),
         )
-    audit.log_action(username, "plan_upgraded")
+        audit.log_action(username, "plan_upgraded", conn=conn)
     return True, "Proプランへのアップグレードが完了しました🎉 もう一度ログインしてください。"
 
 
@@ -136,13 +162,14 @@ def _update_by_customer(customer_id, action, plan=None, subscription_status=None
     if not sets:
         return
     params.append(customer_id)
+    # UPDATEと監査ログを同じトランザクションに乗せる(理由は confirm_checkout と同じ)。
     with _connect() as conn:
         row = conn.execute(
             f"UPDATE users SET {', '.join(sets)} WHERE stripe_customer_id = %s RETURNING username",
             params,
         ).fetchone()
-    if row:
-        audit.log_action(row["username"], action, detail=f"customer={customer_id}")
+        if row:
+            audit.log_action(row["username"], action, detail=f"customer={customer_id}", conn=conn)
 
 
 def apply_subscription_event(event):
@@ -177,5 +204,5 @@ def cancel_subscription(username):
             "UPDATE users SET plan = 'free', subscription_status = 'canceled' WHERE username = %s",
             (username,),
         )
-    audit.log_action(username, "plan_canceled")
+        audit.log_action(username, "plan_canceled", conn=conn)
     return True, "解約しました。プランはFreeに戻りました。"

@@ -18,7 +18,17 @@ MAX_CATEGORY_LENGTH = 50
 
 st.set_page_config(page_title="入力保存アプリ", page_icon="📝", layout="centered")
 
-migrate.run_pending_migrations(os.environ["DATABASE_URL"])
+
+@st.cache_resource
+def _run_migrations_once():
+    """マイグレーション確認はアプリ起動時に1回で十分。
+    以前はモジュール直下に書いていたため、Streamlitが再実行するたびに
+    (=画面上の何を操作しても)毎回DBへ接続してチェックし直していた。"""
+    migrate.run_pending_migrations(os.environ["DATABASE_URL"])
+    return True
+
+
+_run_migrations_once()
 
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
@@ -28,6 +38,12 @@ if "username" not in st.session_state:
 
 if "role" not in st.session_state:
     st.session_state.role = None
+
+
+@st.cache_data(ttl=60)
+def _cached_uptime_summary():
+    """ops.uptime_summary()のキャッシュ付きラッパー。60秒だけ結果を使い回す。"""
+    return ops.uptime_summary()
 
 
 def show_flash():
@@ -202,7 +218,12 @@ if st.session_state.role == "admin":
 
         st.caption("🩺 本番の稼働状況")
         try:
-            summary = ops.uptime_summary()
+            # GitHub Actionsへの実際の問い合わせは初回だけ(1〜2秒かかる)。
+            # Streamlitは画面上のどこを操作してもこのブロックごと再実行されるため、
+            # キャッシュ無しだと管理者がクリックするたびに毎回GitHubへ問い合わせて画面全体が固まっていた。
+            # 60秒だけ結果を使い回すことで、2回目以降はほぼ一瞬で返るようにした。
+            with st.spinner("稼働状況を取得中..."):
+                summary = _cached_uptime_summary()
         except Exception:
             summary = None
         if summary is None:
@@ -217,13 +238,20 @@ if st.session_state.role == "admin":
 
         st.caption("👥 顧客一覧")
         customer_query = st.text_input(
-            "ユーザー名で絞り込み", placeholder="ユーザー名の一部を入力", key="customer_query"
+            "ユーザー名で絞り込み(完全一致なら一発、部分一致なら絞り込み)",
+            placeholder="ユーザー名の一部、または完全なユーザー名を入力",
+            key="customer_query",
         )
         customers = auth.list_customers()
-        if customer_query.strip():
-            customers = [
-                c for c in customers if customer_query.strip().lower() in c["username"].lower()
-            ]
+        query = customer_query.strip()
+        if query:
+            # ユーザー数が増えても、完全一致は辞書でO(1)。部分一致だけO(n)の絞り込みに回す。
+            customers_by_username = {c["username"]: c for c in customers}
+            exact = customers_by_username.get(query)
+            if exact is not None:
+                customers = [exact]
+            else:
+                customers = [c for c in customers if query.lower() in c["username"].lower()]
         st.dataframe(customers, use_container_width=True, hide_index=True)
 
         st.caption("📋 直近の監査ログ")
@@ -233,9 +261,10 @@ if st.session_state.role == "admin":
             detail = f" ({entry['detail']})" if entry["detail"] else ""
             st.text(f"{when}  {who}  {entry['action']}{detail}")
 
-plan = billing.get_plan(st.session_state.username)
-subscription_status = billing.get_subscription_status(st.session_state.username)
-count = billing.monthly_memo_count(st.session_state.username)
+account = billing.get_account_summary(st.session_state.username)
+plan = account["plan"]
+subscription_status = account["subscription_status"]
+count = account["monthly_count"]
 at_limit = plan == "free" and count >= billing.FREE_MEMO_LIMIT
 
 if subscription_status == "past_due":

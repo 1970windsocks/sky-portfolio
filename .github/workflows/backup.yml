@@ -1,0 +1,32 @@
+# 週次バックアップ(下書き・未稼働)
+#
+# 現状はまだ動きません。稼働させるには、GitHubリポジトリの Settings > Secrets に
+# `RAILWAY_API_TOKEN`(ワークスペーススコープのAPIトークン)を追加する必要があります。
+# 参考: railway ssh はプロジェクトトークン(RAILWAY_TOKEN)では動かず、
+# ワークスペーストークン(RAILWAY_API_TOKEN)かログインが必要、と公式ドキュメントに明記あり。
+# ワークスペーストークンはプロジェクト単位より権限が広いため、追加は金子さんの判断で。
+#
+# 稼働させたら、バックアップ結果はGitHub Actionsの実行ログに出力される。
+# 本当に大事に使うなら、後で「ログに出すだけ」から「どこかのストレージに保存する」に強化するとよい。
+
+name: 入力保存一覧アプリ 週次バックアップ
+
+on:
+  schedule:
+    - cron: "0 18 * * 0" # 毎週日曜 18:00 UTC(日本時間 月曜 3:00)
+  workflow_dispatch: {} # 手動実行もできるようにしておく
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      - name: memosをバックアップして実行ログに出力
+        working-directory: 入力保存一覧アプリ
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: railway ssh --project proactive-wholeness --environment production --service 入力保存一覧アプリ -- python scripts/backup_db.py
