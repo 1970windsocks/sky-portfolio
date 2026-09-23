@@ -1,3 +1,8 @@
+# 第51課題(CI/CD): このワークフローの合否が、RailwayのCD(自動デプロイ)を
+# 実際にゲートしている。Railway側の「Wait for CI」設定(source.checkSuites)を
+# 有効にすると、mainブランチへのpush時、ここが成功するまでデプロイがWAITING状態で
+# 止まり、失敗すればデプロイ自体がスキップされる(壊れたコードが本番に出なくなる)。
+# 参照: https://docs.railway.com/deployments/github-autodeploys#wait-for-ci
 name: 入力保存一覧アプリ テスト
 
 on:
