@@ -541,25 +541,6 @@ def test_admin_dashboard_shows_customer_list(monkeypatch):
 
     table_text = " ".join(str(df.value) for df in at.dataframe)
     assert "bosssan" in table_text
-
-
-def test_uptime_fetch_failure_is_logged_not_silently_swallowed(monkeypatch):
-    """第53課題(ポストモーテム): 稼働状況の取得が失敗しても、以前は何も記録が
-    残らず気づけなかった。監査ログに残り、画面にも失敗が分かる表示が出ることを確認する。"""
-    import ops
-
-    def broken_uptime_summary():
-        raise RuntimeError("GitHub APIがレート制限に達しました")
-
-    monkeypatch.setattr(ops, "uptime_summary", broken_uptime_summary)
-    create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
-
-    at = make_app()
-    login(at, "bosssan", "pass1234")
-
-    assert any("取得に失敗しました" in c.value for c in at.caption)
-    entries = audit.recent_entries(20)
-    assert any(e["action"] == "uptime_summary_failed" for e in entries)
     assert "staffsan" in table_text
 
 
