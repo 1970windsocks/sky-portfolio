@@ -1,6 +1,9 @@
+import hashlib
 import json
 import os
+import queue
 import secrets
+import threading
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
@@ -53,6 +56,43 @@ def send_email(to, subject, body):
         response.read()
 
 
+# 第60課題: 以前はsend_email()をサインアップ処理の中で直接呼んでおり、
+# Resend APIへの実測約390msの往復が終わるまで「登録する」ボタンの応答が止まっていた。
+# メール送信だけをキュー(順番待ちの箱)に積み、裏の専用スレッドで後から処理する形にして、
+# 画面はすぐ返すようにする。
+# 制約: プロセス内のキューなので、アプリが再起動/スリープすると積んだままの分は消える
+# (RedisやSQSのような永続キューではない。今の無料プランの予算内でできる簡易版)。
+_email_queue = queue.Queue()
+
+
+def _email_worker():
+    while True:
+        to, subject, body = _email_queue.get()
+        try:
+            send_email(to, subject, body)
+        except Exception as e:
+            # バックグラウンドなので画面にはもう出せない。せめて記録だけは残す。
+            audit.log_action(None, "email_send_failed", detail=f"{to}: {str(e)[:150]}")
+        finally:
+            _email_queue.task_done()
+
+
+_email_worker_thread = threading.Thread(target=_email_worker, daemon=True)
+_email_worker_thread.start()
+
+
+def enqueue_email(to, subject, body):
+    """send_email()を裏のキューに積む。呼び出し側はネットワーク往復を待たずに戻れる。"""
+    _email_queue.put((to, subject, body))
+
+
+def wait_for_pending_emails():
+    """キューに積まれたメールが全部処理されるまで待つ(主にテスト用)。
+    非同期化したことで、送信直後に結果を確認するテストが「まだ処理前」を
+    掴んでしまうレースコンディションが起きるため、明示的に待つ手段を用意する。"""
+    _email_queue.join()
+
+
 def _base_url():
     return os.environ.get("APP_BASE_URL", "").rstrip("/")
 
@@ -97,7 +137,7 @@ def create_user(username, email, password):
 
     token = _create_token(user_id, "verify", ttl_hours=24)
     link = f"{_base_url()}/?verify={token}"
-    send_email(
+    enqueue_email(
         email,
         "【入力保存アプリ】メールアドレスの確認",
         f"以下のリンクをクリックして登録を完了してください(24時間有効)。\n\n{link}",
@@ -156,7 +196,7 @@ def request_password_reset(email):
         if user:
             token = _create_token(user["id"], "reset", ttl_hours=1)
             link = f"{_base_url()}/?reset={token}"
-            send_email(
+            enqueue_email(
                 email,
                 "【入力保存アプリ】パスワード再設定",
                 f"以下のリンクから新しいパスワードを設定してください(1時間有効)。\n\n{link}",
@@ -219,3 +259,40 @@ def list_customers():
             "ORDER BY u.created_at DESC"
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _hash_api_token(token):
+    # APIトークンはランダムな高エントロピー値(パスワードのような推測対象ではない)なので、
+    # bcryptのような低速ハッシュは不要。SHA-256で十分(GitHubの個人アクセストークン等と同じ考え方)。
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def generate_api_token(username):
+    """このユーザー用のAPIトークンを新規発行する(第54課題)。
+
+    戻り値は平文のトークン。これが見えるのはこの呼び出しの戻り値だけで、
+    DBにはハッシュ値しか保存しない(パスワードと同じ考え方)。
+    再発行すると古いトークンは即座に無効になる。
+    """
+    token = secrets.token_urlsafe(32)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE users SET api_token_hash = %s WHERE username = %s",
+            (_hash_api_token(token), username),
+        )
+    return token
+
+
+def get_user_by_api_token(token):
+    """APIトークン(平文)から、それを発行したユーザーを1件だけ特定する。
+
+    以前の実装は「合言葉が合っていればOK、誰のデータを見るかは呼び出し側の
+    自己申告(ownerパラメータ)」だったため、トークンが1つ漏れると全ユーザーの
+    データが読めてしまう権限設計の欠陥があった。今はトークン自体が
+    「誰の代わりに動いているか」を一意に決める。
+    """
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM users WHERE api_token_hash = %s", (_hash_api_token(token),)
+        ).fetchone()
+    return dict(row) if row else None

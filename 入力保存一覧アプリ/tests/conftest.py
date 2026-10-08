@@ -44,7 +44,11 @@ def no_real_email(monkeypatch):
         sent.append({"to": to, "subject": subject, "body": body})
 
     monkeypatch.setattr(auth, "send_email", fake_send_email)
-    return sent
+    yield sent
+    # 第60課題でメール送信を非同期化したため、テスト終了時にまだキューに
+    # 積まれたジョブが残っていると、monkeypatch解除後に本物のResend APIへ
+    # 届いてしまう。テストごとに必ず空にしてから次のテストに進む。
+    auth.wait_for_pending_emails()
 
 
 @pytest.fixture(autouse=True)

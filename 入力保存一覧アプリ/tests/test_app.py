@@ -57,6 +57,7 @@ def test_signup_then_login_blocked_until_verified(no_real_email):
     at.text_input(key="signup_email").input("newuser@example.com")
     at.text_input(key="signup_password").input("password123")
     [b for b in at.button if b.label == "登録する"][0].click().run()
+    auth.wait_for_pending_emails()
 
     assert any("確認メール" in s.value for s in at.success)
     assert len(no_real_email) == 1
@@ -74,6 +75,7 @@ def test_verify_link_then_login_succeeds(no_real_email):
     at.text_input(key="signup_email").input("newuser@example.com")
     at.text_input(key="signup_password").input("password123")
     [b for b in at.button if b.label == "登録する"][0].click().run()
+    auth.wait_for_pending_emails()
 
     link = extract_link(no_real_email, "?verify=")
     token = link.split("?verify=")[1]
@@ -104,6 +106,7 @@ def test_password_reset_flow(no_real_email):
     with_expander = at.text_input(key="forgot_email")
     with_expander.input("tester@example.com")
     [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
+    auth.wait_for_pending_emails()
 
     link = extract_link(no_real_email, "?reset=")
     token = link.split("?reset=")[1]
@@ -469,6 +472,7 @@ def test_signup_and_login_are_logged(no_real_email):
     at.text_input(key="signup_email").input("newuser@example.com")
     at.text_input(key="signup_password").input("password123")
     [b for b in at.button if b.label == "登録する"][0].click().run()
+    auth.wait_for_pending_emails()
 
     entries = audit.recent_entries()
     assert any(e["action"] == "signup" and e["username"] == "newuser" for e in entries)
@@ -488,6 +492,7 @@ def test_signup_and_login_are_logged(no_real_email):
 
 def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
     create_verified_user("tester", "tester@example.com", "oldpass123")
+    auth.wait_for_pending_emails()
     # create_verified_user自体が確認メールを1通送っているので、ここが起点の件数になる
     sent_before_reset_requests = len(no_real_email)
 
@@ -497,11 +502,13 @@ def test_password_reset_rate_limited_after_repeated_requests(no_real_email):
     for _ in range(3):
         at.text_input(key="forgot_email").input("tester@example.com")
         [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
+    auth.wait_for_pending_emails()
 
     assert len(no_real_email) == sent_before_reset_requests + 3  # 3回までは送られる
 
     at.text_input(key="forgot_email").input("tester@example.com")
     [b for b in at.button if b.label == "再設定メールを送る"][0].click().run()
+    auth.wait_for_pending_emails()
 
     # 4回目は送信枠を超えたため、実際には送られない(文言は変わらない)
     assert len(no_real_email) == sent_before_reset_requests + 3
