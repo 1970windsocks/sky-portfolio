@@ -23,6 +23,8 @@ def clean_db():
         conn.execute("TRUNCATE auth_tokens, users RESTART IDENTITY CASCADE")
         # 監査ログが残っているとレート制限(直近N分の件数)の判定がテスト間で汚染されるため必ず消す
         conn.execute("TRUNCATE audit_log RESTART IDENTITY")
+        # 第61課題: 日次集計テーブルも同じ理由でテスト間に残すと汚染されるため必ず消す
+        conn.execute("TRUNCATE daily_action_stats")
     yield
 
 

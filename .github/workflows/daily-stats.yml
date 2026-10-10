@@ -1,0 +1,29 @@
+# 第61課題(データエンジニアリング): audit_logを日次で集計するバッチパイプライン
+#
+# backup.ymlと同じ理由で、稼働させるにはGitHubリポジトリの Settings > Secrets に
+# `RAILWAY_API_TOKEN`(ワークスペーススコープのAPIトークン)が必要(未設定なら下書きのまま)。
+#
+# 毎日1回、「前日1日分」のaudit_logをaction種別ごとに集計し、daily_action_statsに
+# UPSERTで貯める(scripts/aggregate_daily_stats.py、手元での実データ検証済み)。
+
+name: 入力保存一覧アプリ 日次集計
+
+on:
+  schedule:
+    - cron: "0 19 * * *" # 毎日19:00 UTC(日本時間 翌4:00、前日分のログが出揃った後)
+  workflow_dispatch: {} # 手動実行もできるようにしておく
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli@latest
+
+      - name: 前日分のaudit_logを集計してdaily_action_statsに貯める
+        working-directory: 入力保存一覧アプリ
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+        run: railway ssh --project proactive-wholeness --environment production --service 入力保存一覧アプリ -- python scripts/aggregate_daily_stats.py
