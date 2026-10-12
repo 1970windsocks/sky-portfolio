@@ -5,6 +5,7 @@ import os
 
 import streamlit as st
 
+import ai_category
 import auth
 import audit
 import billing
@@ -400,7 +401,7 @@ for item in visible_data:
                 st.session_state.editing_id = None
                 st.rerun()
         else:
-            col1, col2, col3, col4 = st.columns([5, 1, 1, 1])
+            col1, col2, col3, col4, col5 = st.columns([4, 1, 1, 1, 1])
             col1.write(item["text"])
             meta = []
             if item["date"]:
@@ -421,6 +422,24 @@ for item in visible_data:
                 db.delete_memo(item["id"], st.session_state.username)
                 _cached_list_memos.clear()
                 st.rerun()
+            if not item["category"]:
+                # 第63課題: AIをチャットの外で機能として使う。カテゴリー未入力のメモに対して、
+                # 既存のカテゴリー一覧と一貫性のある提案をAIにさせる。呼び出しはこのボタンを
+                # 押したときだけ(自動実行にしない)なので、意図しないAPIコストは発生しない。
+                if col5.button("✨", key=f"ai_category_{item['id']}", help="AIにカテゴリーを提案してもらう"):
+                    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                    try:
+                        suggestion = ai_category.suggest_category(api_key, item["text"], categories)
+                    except ai_category.AiCategorySuggestionError as e:
+                        # AIの提案はあくまで下書き。失敗してもメモ保存自体には影響しない
+                        # (ユーザーは今まで通り✏️から手でカテゴリーを付けられる)。
+                        st.warning(f"カテゴリーを提案できませんでした: {e}")
+                    else:
+                        db.update_memo(item["id"], st.session_state.username, item["text"], suggestion)
+                        _cached_list_memos.clear()
+                        st.session_state.flash_message = f"AIがカテゴリーを提案しました: {suggestion}(違う場合は✏️で編集できます)"
+                        st.session_state.flash_is_error = False
+                        st.rerun()
 
 st.divider()
 
