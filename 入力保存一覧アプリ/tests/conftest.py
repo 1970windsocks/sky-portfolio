@@ -25,6 +25,8 @@ def clean_db():
         conn.execute("TRUNCATE audit_log RESTART IDENTITY")
         # 第61課題: 日次集計テーブルも同じ理由でテスト間に残すと汚染されるため必ず消す
         conn.execute("TRUNCATE daily_action_stats")
+        # 第65課題: エージェントが保存するドラフトも同じ理由で必ず消す
+        conn.execute("TRUNCATE support_drafts RESTART IDENTITY")
     yield
 
 

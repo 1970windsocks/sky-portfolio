@@ -14,6 +14,7 @@ import legal
 import migrate
 import ops
 import rag
+import support_agent
 
 MAX_TEXT_LENGTH = 2000
 MAX_CATEGORY_LENGTH = 50
@@ -320,6 +321,59 @@ if st.session_state.role == "admin":
                         st.caption("🔍 根拠(この回答が基づいた資料)")
                         for s in result["sources"]:
                             st.caption(f"・{s['title']}(一致度 {s['score']:.2f})")
+
+        st.caption(
+            "🤖 サポート回答ドラフト・エージェント(第65課題) — "
+            "調べる→まとめる→保存する、を自律的に行う。顧客へは自動送信しない"
+        )
+        agent_question = st.text_input(
+            "顧客からの質問を入力", placeholder="例: 返品はできますか", key="agent_question"
+        )
+        if st.button("エージェントを実行する", key="run_support_agent"):
+            if not agent_question.strip():
+                st.warning("質問を入力してください")
+            else:
+                with st.spinner("調べて→まとめています..."):
+                    agent_result = support_agent.run_agent(
+                        os.environ.get("ANTHROPIC_API_KEY", ""),
+                        _legal_rag_index(),
+                        agent_question.strip(),
+                    )
+                evaluation = agent_result["evaluation"]
+                if evaluation["passed"]:
+                    st.success(f"✅ 合格(スコア{evaluation['score']}点)")
+                else:
+                    st.warning(f"⚠️ 要レビュー(スコア{evaluation['score']}点)")
+                st.write(agent_result["answer"] or "(回答を生成できませんでした)")
+                st.caption(
+                    f"{evaluation['reason']} ／ 検索回数: {agent_result['search_attempts']}回"
+                )
+                if agent_result["sources"]:
+                    st.caption("🔍 根拠")
+                    for s in agent_result["sources"]:
+                        st.caption(f"・{s['title']}")
+                st.caption(
+                    f"ドラフトID {agent_result['draft_id']} として保存しました"
+                    "(このまま顧客に送られることはありません。下の一覧で確認できます)"
+                )
+
+        recent_drafts = support_agent.list_recent_drafts(limit=5)
+        if recent_drafts:
+            st.caption("📋 直近のドラフト(要レビュー含む)")
+            st.dataframe(
+                [
+                    {
+                        "質問": d["question"],
+                        "スコア": d["score"],
+                        "合格": d["passed"],
+                        "検索回数": d["search_attempts"],
+                        "作成日時": d["created_at"].strftime("%Y-%m-%d %H:%M"),
+                    }
+                    for d in recent_drafts
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
 
 account = billing.get_account_summary(st.session_state.username)
 plan = account["plan"]
