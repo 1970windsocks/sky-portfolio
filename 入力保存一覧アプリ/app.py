@@ -13,6 +13,7 @@ import db
 import legal
 import migrate
 import ops
+import rag
 
 MAX_TEXT_LENGTH = 2000
 MAX_CATEGORY_LENGTH = 50
@@ -45,6 +46,19 @@ if "role" not in st.session_state:
 def _cached_uptime_summary():
     """ops.uptime_summary()のキャッシュ付きラッパー。60秒だけ結果を使い回す。"""
     return ops.uptime_summary()
+
+
+@st.cache_resource
+def _legal_rag_index():
+    """利用規約・特商法表記・プライバシーポリシーを検索対象として取り込んだ索引(第64課題)。
+
+    内容は起動後に変わらない静的な文書なので、マイグレーション確認(_run_migrations_once)
+    と同じくst.cache_resourceでプロセス内に1回だけ構築する。"""
+    index = rag.RagIndex()
+    index.add_document("利用規約", legal.TERMS_TEXT)
+    index.add_document("特定商取引法に基づく表記", legal.TOKUSHOHO_TEXT)
+    index.add_document("プライバシーポリシー", legal.PRIVACY_TEXT)
+    return index
 
 
 @st.cache_data(ttl=5)
@@ -281,6 +295,31 @@ if st.session_state.role == "admin":
             when = entry["created_at"].strftime("%Y-%m-%d %H:%M")
             detail = f" ({entry['detail']})" if entry["detail"] else ""
             st.text(f"{when}  {who}  {entry['action']}{detail}")
+
+        st.caption("📚 資料Q&A(RAG) — 利用規約・特商法表記・プライバシーポリシーについて質問する")
+        rag_question = st.text_input(
+            "質問を入力", placeholder="例: 支払いが遅れたらどうなりますか", key="rag_question"
+        )
+        if st.button("質問する", key="ask_rag"):
+            if not rag_question.strip():
+                st.warning("質問を入力してください")
+            else:
+                try:
+                    result = rag.answer_question(
+                        os.environ.get("ANTHROPIC_API_KEY", ""),
+                        _legal_rag_index(),
+                        rag_question.strip(),
+                    )
+                except rag.RagAnswerError as e:
+                    # 検索(根拠探し)自体は成功しても、文章化(AI呼び出し)だけ失敗することがある。
+                    # その場合も管理画面全体は止めず、ここだけエラーを出す。
+                    st.warning(f"回答を生成できませんでした: {e}")
+                else:
+                    st.write(result["answer"])
+                    if result["sources"]:
+                        st.caption("🔍 根拠(この回答が基づいた資料)")
+                        for s in result["sources"]:
+                            st.caption(f"・{s['title']}(一致度 {s['score']:.2f})")
 
 account = billing.get_account_summary(st.session_state.username)
 plan = account["plan"]
