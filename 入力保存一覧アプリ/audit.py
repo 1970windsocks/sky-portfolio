@@ -56,3 +56,26 @@ def recent_entries(limit=20):
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+# 第66課題: 「システム起因の失敗」として監視する対象。login_failedのような
+# 利用者側の入力ミス(パスワード間違い等)は、システムの不具合ではないため含めない。
+SYSTEM_FAILURE_ACTIONS = ("email_send_failed", "uptime_summary_failed")
+
+
+def system_failure_counts(window_minutes=1440):
+    """直近window_minutes分の、システム起因の失敗の件数をaction別に返す
+    (可観測性: pingによる死活監視とは別の指標)。
+    戻り値: {"email_send_failed": 件数, "uptime_summary_failed": 件数}
+    """
+    since = datetime.now(timezone.utc) - timedelta(minutes=window_minutes)
+    with _connect() as conn:
+        rows = conn.execute(
+            "SELECT action, count(*) AS c FROM audit_log "
+            "WHERE created_at >= %s AND action = ANY(%s) GROUP BY action",
+            (since, list(SYSTEM_FAILURE_ACTIONS)),
+        ).fetchall()
+    counts = {action: 0 for action in SYSTEM_FAILURE_ACTIONS}
+    for row in rows:
+        counts[row["action"]] = row["c"]
+    return counts

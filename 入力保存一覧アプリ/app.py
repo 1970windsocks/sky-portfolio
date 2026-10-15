@@ -271,6 +271,25 @@ if st.session_state.role == "admin":
                 f"{summary['percentage']:.1f}%",
                 help=f"目標SLO: {summary['slo_target']}%以上",
             )
+            # 第66課題: 「なるべく落ちないように」ではなく、月に何分まで落ちてよいかを
+            # 具体的な数字(エラーバジェット)で見せる。
+            budget = ops.error_budget_status(summary)
+            budget_icon = "🔴" if budget["over_budget"] else "🟢"
+            st.caption(
+                f"{budget_icon} エラーバジェット(直近{budget['window_days']}日換算): "
+                f"残り{budget['remaining_minutes']:.0f}分 / {budget['budget_minutes']:.0f}分中"
+                f"(死活監視の失敗1回を{ops.CHECK_INTERVAL_MINUTES}分のダウンタイムとみなした概算)"
+            )
+
+        st.caption("📈 システム障害件数(直近24時間、可観測性)")
+        failure_counts = audit.system_failure_counts()
+        total_failures = sum(failure_counts.values())
+        if total_failures == 0:
+            st.caption("記録なし")
+        else:
+            col_a, col_b = st.columns(2)
+            col_a.metric("メール送信失敗", failure_counts["email_send_failed"])
+            col_b.metric("稼働状況取得失敗", failure_counts["uptime_summary_failed"])
 
         st.caption("👥 顧客一覧")
         customer_query = st.text_input(
