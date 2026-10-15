@@ -37,3 +37,36 @@ def uptime_summary(per_page=100):
         "slo_target": SLO_TARGET,
         "meets_slo": percentage >= SLO_TARGET,
     }
+
+
+CHECK_INTERVAL_MINUTES = 15  # uptime.ymlのcron間隔と合わせる
+
+
+def error_budget_minutes(slo_target=SLO_TARGET, window_days=30):
+    """第66課題: SLOから、window_days日間で許容されるダウンタイム(分)を計算する
+    (エラーバジェット)。「なるべく落ちないように」ではなく、具体的に何分まで
+    落ちてよいかを数字で決めるのがSREの考え方。"""
+    total_minutes = window_days * 24 * 60
+    return round(total_minutes * (1 - slo_target / 100), 1)
+
+
+def error_budget_status(summary, window_days=30):
+    """uptime_summary()の結果から、エラーバジェットの消費状況を見積もる。
+
+    死活監視はCHECK_INTERVAL_MINUTES(15分)おきなので、1回の失敗は
+    その間ずっと落ちていたとは限らないが、安全側に倒して
+    「1回の失敗 ≈ 15分のダウンタイム」とみなす簡易な見積もり。
+    summaryがNoneなら(稼働状況を取得できていない)Noneを返す。
+    """
+    if summary is None:
+        return None
+    failed = summary["total"] - summary["success"]
+    used_minutes = failed * CHECK_INTERVAL_MINUTES
+    budget_minutes = error_budget_minutes(summary["slo_target"], window_days)
+    return {
+        "window_days": window_days,
+        "budget_minutes": budget_minutes,
+        "used_minutes": used_minutes,
+        "remaining_minutes": round(budget_minutes - used_minutes, 1),
+        "over_budget": used_minutes > budget_minutes,
+    }
