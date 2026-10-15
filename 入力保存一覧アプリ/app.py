@@ -253,6 +253,7 @@ if st.session_state.role == "admin":
         col2.metric("全体の保存件数", stats["memo_count"])
 
         st.caption("🩺 本番の稼働状況")
+        fetch_failed = False
         try:
             # GitHub Actionsへの実際の問い合わせは初回だけ(1〜2秒かかる)。
             # Streamlitは画面上のどこを操作してもこのブロックごと再実行されるため、
@@ -260,9 +261,17 @@ if st.session_state.role == "admin":
             # 60秒だけ結果を使い回すことで、2回目以降はほぼ一瞬で返るようにした。
             with st.spinner("稼働状況を取得中..."):
                 summary = _cached_uptime_summary()
-        except Exception:
+        except Exception as e:
+            # 第53課題: 以前はここで例外を握りつぶし、失敗が完全に見えなくなっていた
+            # (画面上は「まだ監視データがありません」としか出ず、GitHub APIが本当に
+            # 落ちているのか、ただ未取得なのかを区別できなかった)。
+            # 監査ログに残すことで、少なくとも「気づける」状態にする。
             summary = None
-        if summary is None:
+            fetch_failed = True
+            audit.log_action(None, "uptime_summary_failed", detail=str(e)[:200])
+        if fetch_failed:
+            st.caption("⚠️ 稼働状況の取得に失敗しました(下の監査ログに記録済み)")
+        elif summary is None:
             st.caption("まだ監視データがありません")
         else:
             status_icon = "✅" if summary["meets_slo"] else "⚠️"
