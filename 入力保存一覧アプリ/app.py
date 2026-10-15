@@ -242,6 +242,7 @@ if col_logout.button("ログアウト", use_container_width=True):
     st.session_state.role = None
     st.session_state.editing_id = None
     st.session_state.pop("checkout_url", None)
+    st.session_state.pop("new_api_token", None)
     st.rerun()
 st.caption(f"ログイン中: {st.session_state.username} さん")
 
@@ -402,6 +403,17 @@ if plan == "pro":
         st.rerun()
 else:
     st.caption(f"プラン: Free(月{billing.FREE_MEMO_LIMIT}件まで) ・今月{count}件")
+
+with st.expander("🔑 APIトークン(/api/memos で自分のメモを取得する用)"):
+    st.caption(
+        "発行すると、その場に表示されたときだけ全文が見えます(再表示はできません)。"
+        "再発行すると古いトークンは即座に無効になります。"
+    )
+    if st.button("新しいトークンを発行する", key="generate_api_token"):
+        st.session_state.new_api_token = auth.generate_api_token(st.session_state.username)
+    if "new_api_token" in st.session_state:
+        st.code(st.session_state.new_api_token, language=None)
+        st.caption(f"使い方: `Authorization: Bearer <上のトークン>` を付けて `GET /api/memos` を呼ぶ")
 
 my_data = _cached_list_memos(st.session_state.username)
 
