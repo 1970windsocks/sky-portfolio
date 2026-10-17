@@ -273,6 +273,11 @@ def generate_api_token(username):
     戻り値は平文のトークン。これが見えるのはこの呼び出しの戻り値だけで、
     DBにはハッシュ値しか保存しない(パスワードと同じ考え方)。
     再発行すると古いトークンは即座に無効になる。
+
+    第67課題(脅威モデリング)で見つけた抜け: 資格情報を発行する操作なのに、
+    誰がいつ発行したかが監査ログに残っていなかった。トークンが不正に
+    使われた形跡に気づいたとき、「いつ発行されたものか」を追えないと
+    調査もできないため、他の認証系の操作(signup・login等)と同じく記録する。
     """
     token = secrets.token_urlsafe(32)
     with _connect() as conn:
@@ -280,6 +285,7 @@ def generate_api_token(username):
             "UPDATE users SET api_token_hash = %s WHERE username = %s",
             (_hash_api_token(token), username),
         )
+    audit.log_action(username, "api_token_generated")
     return token
 
 
