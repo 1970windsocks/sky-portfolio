@@ -18,6 +18,9 @@ import support_agent
 
 MAX_TEXT_LENGTH = 2000
 MAX_CATEGORY_LENGTH = 50
+MAX_AI_QUESTION_LENGTH = 500  # 第69課題のレビューで見つけた抜け: メモ本文(MAX_TEXT_LENGTH)
+# には長さ制限があるのに、RAG・エージェントへの質問欄には無かった。長すぎる入力を
+# そのままClaude APIに渡すと、コストやトークン上限エラーにつながるため制限する。
 
 st.set_page_config(page_title="入力保存アプリ", page_icon="📝", layout="centered")
 
@@ -328,7 +331,10 @@ if st.session_state.role == "admin":
 
         st.caption("📚 資料Q&A(RAG) — 利用規約・特商法表記・プライバシーポリシーについて質問する")
         rag_question = st.text_input(
-            "質問を入力", placeholder="例: 支払いが遅れたらどうなりますか", key="rag_question"
+            "質問を入力",
+            placeholder="例: 支払いが遅れたらどうなりますか",
+            key="rag_question",
+            max_chars=MAX_AI_QUESTION_LENGTH,
         )
         if st.button("質問する", key="ask_rag"):
             if not rag_question.strip():
@@ -356,7 +362,10 @@ if st.session_state.role == "admin":
             "調べる→まとめる→保存する、を自律的に行う。顧客へは自動送信しない"
         )
         agent_question = st.text_input(
-            "顧客からの質問を入力", placeholder="例: 返品はできますか", key="agent_question"
+            "顧客からの質問を入力",
+            placeholder="例: 返品はできますか",
+            key="agent_question",
+            max_chars=MAX_AI_QUESTION_LENGTH,
         )
         if st.button("エージェントを実行する", key="run_support_agent"):
             if not agent_question.strip():
