@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.request
+from datetime import datetime, timedelta, timezone
 
 import psycopg
 
@@ -196,6 +197,29 @@ def list_recent_drafts(limit=10):
         "created_at",
     ]
     return [dict(zip(columns, row)) for row in rows]
+
+
+def adoption_stats(window_days=30):
+    """第71課題(事業化のKPI): このエージェントが作ったドラフトのうち、
+    どれだけが「合格(passed=True、=人がそのまま使える水準)」だったかを返す。
+
+    このエージェントを事業として売るなら、「導入後どれだけ人の対応工数が
+    減ったか」を示す必要がある。人手を介さず安心して使える下書きの比率
+    (採用率)は、その最も直接的な代理指標になる。
+
+    戻り値: {"total", "passed", "adoption_rate"}(totalが0のときadoption_rateはNone)
+    """
+    since = datetime.now(timezone.utc) - timedelta(days=window_days)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT count(*) AS total, "
+            "count(*) FILTER (WHERE passed) AS passed "
+            "FROM support_drafts WHERE created_at >= %s",
+            (since,),
+        ).fetchone()
+    total, passed = row
+    adoption_rate = (passed / total) if total else None
+    return {"total": total, "passed": passed, "adoption_rate": adoption_rate}
 
 
 def run_agent(api_key, index, question, max_search_attempts=MAX_SEARCH_ATTEMPTS):
