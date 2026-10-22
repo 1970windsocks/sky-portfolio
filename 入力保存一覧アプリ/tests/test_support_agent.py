@@ -1,8 +1,10 @@
 import json
 import os
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 import psycopg
+import pytest
 
 import support_agent
 from rag import RagIndex
@@ -156,3 +158,40 @@ def test_run_agent_still_saves_draft_when_api_fails(monkeypatch):
         ).fetchone()
     assert row[0] is False
     assert "回答生成に失敗" in row[1]
+
+
+def test_adoption_stats_returns_none_rate_when_no_drafts():
+    stats = support_agent.adoption_stats()
+
+    assert stats == {"total": 0, "passed": 0, "adoption_rate": None}
+
+
+def test_adoption_stats_computes_passed_ratio():
+    evaluation_passed = {"score": 80, "passed": True, "reason": "テスト用"}
+    evaluation_failed = {"score": 10, "passed": False, "reason": "テスト用"}
+    sources = [{"title": "返品ポリシー", "text": "本文", "score": 0.5}]
+
+    support_agent.save_draft("質問1", "回答1", sources, evaluation_passed, 1)
+    support_agent.save_draft("質問2", "回答2", sources, evaluation_passed, 1)
+    support_agent.save_draft("質問3", "回答3", sources, evaluation_failed, 1)
+
+    stats = support_agent.adoption_stats()
+
+    assert stats == {"total": 3, "passed": 2, "adoption_rate": pytest.approx(2 / 3)}
+
+
+def test_adoption_stats_excludes_drafts_outside_window():
+    evaluation = {"score": 80, "passed": True, "reason": "テスト用"}
+    sources = [{"title": "返品ポリシー", "text": "本文", "score": 0.5}]
+
+    draft_id = support_agent.save_draft("古い質問", "回答", sources, evaluation, 1)
+    old_time = datetime.now(timezone.utc) - timedelta(days=40)
+    database_url = os.environ["DATABASE_URL"]
+    with psycopg.connect(database_url, autocommit=True) as conn:
+        conn.execute(
+            "UPDATE support_drafts SET created_at = %s WHERE id = %s", (old_time, draft_id)
+        )
+
+    stats = support_agent.adoption_stats(window_days=30)
+
+    assert stats == {"total": 0, "passed": 0, "adoption_rate": None}
