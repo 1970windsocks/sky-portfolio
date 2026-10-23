@@ -22,6 +22,11 @@ MAX_AI_QUESTION_LENGTH = 500  # 第69課題のレビューで見つけた抜け:
 # には長さ制限があるのに、RAG・エージェントへの質問欄には無かった。長すぎる入力を
 # そのままClaude APIに渡すと、コストやトークン上限エラーにつながるため制限する。
 
+AI_FEATURE_RATE_LIMIT = 10  # 第72課題: 第67課題の脅威モデルで「ボタン連打による
+AI_FEATURE_RATE_WINDOW_MINUTES = 1  # コスト爆発」を⚠️未対策として洗い出していたのを、
+# ここで実際に埋める。/api/memos(第48課題)と同じ、audit.recent_count()を使った
+# レート制限のパターンに合わせている。
+
 st.set_page_config(page_title="入力保存アプリ", page_icon="📝", layout="centered")
 
 
@@ -339,7 +344,18 @@ if st.session_state.role == "admin":
         if st.button("質問する", key="ask_rag"):
             if not rag_question.strip():
                 st.warning("質問を入力してください")
+            elif (
+                audit.recent_count(
+                    "ai_rag_question", AI_FEATURE_RATE_WINDOW_MINUTES, username=st.session_state.username
+                )
+                >= AI_FEATURE_RATE_LIMIT
+            ):
+                st.warning(
+                    f"短時間に呼び出しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど時間をおいてください"
+                    "(意図しないAPI費用を防ぐための制限です)。"
+                )
             else:
+                audit.log_action(st.session_state.username, "ai_rag_question")
                 try:
                     result = rag.answer_question(
                         os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -370,7 +386,18 @@ if st.session_state.role == "admin":
         if st.button("エージェントを実行する", key="run_support_agent"):
             if not agent_question.strip():
                 st.warning("質問を入力してください")
+            elif (
+                audit.recent_count(
+                    "ai_agent_run", AI_FEATURE_RATE_WINDOW_MINUTES, username=st.session_state.username
+                )
+                >= AI_FEATURE_RATE_LIMIT
+            ):
+                st.warning(
+                    f"短時間に実行しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど時間をおいてください"
+                    "(意図しないAPI費用を防ぐための制限です)。"
+                )
             else:
+                audit.log_action(st.session_state.username, "ai_agent_run")
                 with st.spinner("調べて→まとめています..."):
                     agent_result = support_agent.run_agent(
                         os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -569,19 +596,36 @@ for item in visible_data:
                 # 既存のカテゴリー一覧と一貫性のある提案をAIにさせる。呼び出しはこのボタンを
                 # 押したときだけ(自動実行にしない)なので、意図しないAPIコストは発生しない。
                 if col5.button("✨", key=f"ai_category_{item['id']}", help="AIにカテゴリーを提案してもらう"):
-                    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                    try:
-                        suggestion = ai_category.suggest_category(api_key, item["text"], categories)
-                    except ai_category.AiCategorySuggestionError as e:
-                        # AIの提案はあくまで下書き。失敗してもメモ保存自体には影響しない
-                        # (ユーザーは今まで通り✏️から手でカテゴリーを付けられる)。
-                        st.warning(f"カテゴリーを提案できませんでした: {e}")
+                    # 第72課題: 第67課題の脅威モデルで「ボタン連打によるコスト爆発」を
+                    # ⚠️未対策として洗い出していた。この機能はメモの件数分ボタンが並ぶ
+                    # (=連打されやすい)ため、特にレート制限の効果が大きい。
+                    if (
+                        audit.recent_count(
+                            "ai_category_suggest",
+                            AI_FEATURE_RATE_WINDOW_MINUTES,
+                            username=st.session_state.username,
+                        )
+                        >= AI_FEATURE_RATE_LIMIT
+                    ):
+                        st.warning(
+                            f"短時間に呼び出しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど"
+                            "時間をおいてください(意図しないAPI費用を防ぐための制限です)。"
+                        )
                     else:
-                        db.update_memo(item["id"], st.session_state.username, item["text"], suggestion)
-                        _cached_list_memos.clear()
-                        st.session_state.flash_message = f"AIがカテゴリーを提案しました: {suggestion}(違う場合は✏️で編集できます)"
-                        st.session_state.flash_is_error = False
-                        st.rerun()
+                        audit.log_action(st.session_state.username, "ai_category_suggest")
+                        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                        try:
+                            suggestion = ai_category.suggest_category(api_key, item["text"], categories)
+                        except ai_category.AiCategorySuggestionError as e:
+                            # AIの提案はあくまで下書き。失敗してもメモ保存自体には影響しない
+                            # (ユーザーは今まで通り✏️から手でカテゴリーを付けられる)。
+                            st.warning(f"カテゴリーを提案できませんでした: {e}")
+                        else:
+                            db.update_memo(item["id"], st.session_state.username, item["text"], suggestion)
+                            _cached_list_memos.clear()
+                            st.session_state.flash_message = f"AIがカテゴリーを提案しました: {suggestion}(違う場合は✏️で編集できます)"
+                            st.session_state.flash_is_error = False
+                            st.rerun()
 
 st.divider()
 

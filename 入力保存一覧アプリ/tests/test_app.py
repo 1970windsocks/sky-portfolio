@@ -9,6 +9,7 @@ APP_DIR = Path(__file__).resolve().parent.parent
 APP_PATH = str(APP_DIR / "app.py")
 
 sys.path.insert(0, str(APP_DIR))
+import ai_category  # noqa: E402
 import audit  # noqa: E402
 import auth  # noqa: E402
 import billing  # noqa: E402
@@ -643,3 +644,52 @@ def test_migrations_are_checked_only_once_across_reruns(monkeypatch):
     at.text_input[0].input("何か入力").run()
 
     assert call_count["n"] == 1, "キャッシュが効いていれば2回目はマイグレーション確認をしないはず"
+
+
+def test_ai_category_suggestion_is_rate_limited(monkeypatch):
+    """第72課題: 第67課題の脅威モデルで⚠️未対策だった「ボタン連打によるコスト爆発」を
+    実際に防げているか確認する。直近の呼び出し回数が上限に達していれば、
+    AIを一切呼ばずに警告だけ出すことを検証する。"""
+    create_verified_user("tester", "tester@example.com", "pass1234")
+
+    # UIで10件のメモを用意するより単純に、制限に達している状態を直接作る
+    for _ in range(10):
+        audit.log_action("tester", "ai_category_suggest")
+
+    def fail_if_called(api_key, text, existing_categories):
+        raise AssertionError("レート制限に達しているのにAPIを呼んではいけない")
+
+    monkeypatch.setattr(ai_category, "suggest_category", fail_if_called)
+
+    at = make_app()
+    login(at, "tester", "pass1234")
+    at.text_input[0].input("テストメモ")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()  # 保存後、次の再描画で一覧に反映される
+
+    suggest_button = [b for b in at.button if b.key and b.key.startswith("ai_category_")][0]
+    suggest_button.click().run()
+
+    assert any("呼び出しすぎ" in w.value for w in at.warning)
+
+
+def test_rag_question_is_rate_limited(monkeypatch):
+    """第72課題: 管理者用のRAG質問も同じレート制限で守られていることを確認する。"""
+    import rag
+
+    create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
+
+    for _ in range(10):
+        audit.log_action("bosssan", "ai_rag_question")
+
+    def fail_if_called(api_key, index, question, top_k=3):
+        raise AssertionError("レート制限に達しているのにAPIを呼んではいけない")
+
+    monkeypatch.setattr(rag, "answer_question", fail_if_called)
+
+    at = make_app()
+    login(at, "bosssan", "pass1234")
+    at.text_input(key="rag_question").input("支払いが遅れたらどうなりますか")
+    [b for b in at.button if b.key == "ask_rag"][0].click().run()
+
+    assert any("呼び出しすぎ" in w.value for w in at.warning)
