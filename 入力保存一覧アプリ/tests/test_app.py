@@ -193,6 +193,28 @@ def test_toggle_favorite():
     assert fav_button.label == "⭐"
 
 
+def test_favorite_count_is_shown_in_caption():
+    """第74課題: ①箱を用意→②一件ずつ確認→③お気に入りなら箱を増やす→④表示する、
+    という自分で考えた手順通りに実装されているかを確認する。"""
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("牛乳を買う")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()
+    at.text_input[0].input("卵を買う")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()
+
+    assert any("お気に入り 0 件" in c.value for c in at.caption)
+
+    fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
+    fav_button.click().run()
+
+    assert any("お気に入り 1 件" in c.value for c in at.caption)
+
+
 def test_free_plan_blocks_at_limit():
     create_verified_user("tester", "tester@example.com", "pass1234")
     at = make_app()
