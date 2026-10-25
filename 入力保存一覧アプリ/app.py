@@ -511,7 +511,16 @@ st.divider()
 
 # ③ 一覧
 st.subheader("保存した一覧")
-st.caption(f"現在 {len(my_data)} 件保存されています")
+
+# 第74課題: 自分の手で考えた手順をそのままコードにしたもの。
+# ①箱(favorite_count)を用意する(最初は0) → ②メモを一件ずつ確認する →
+# ③もしお気に入りだったら箱を1増やす → ④最後に箱の数を表示する
+favorite_count = 0
+for item in my_data:
+    if item["is_favorite"]:
+        favorite_count += 1
+
+st.caption(f"現在 {len(my_data)} 件保存されています(うちお気に入り {favorite_count} 件)")
 
 search_query = st.text_input("🔍 キーワードで検索", placeholder="検索したい文字を入力", key="search_query")
 
