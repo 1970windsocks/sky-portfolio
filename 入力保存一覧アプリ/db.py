@@ -11,10 +11,19 @@ def _connect():
 def list_memos(owner):
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT id, owner, text, category, date, is_favorite FROM memos WHERE owner = %s ORDER BY id",
+            "SELECT id, owner, text, category, date, is_favorite, comment FROM memos WHERE owner = %s ORDER BY id",
             (owner,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def set_comment(memo_id, owner, comment):
+    # ownerも一致条件に含めることで、他人のメモIDを指定されても操作できないようにする(テナント越境ゼロ)
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE memos SET comment = %s WHERE id = %s AND owner = %s",
+            (comment, memo_id, owner),
+        )
 
 
 def set_favorite(memo_id, owner, is_favorite):

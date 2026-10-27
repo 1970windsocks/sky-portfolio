@@ -215,6 +215,30 @@ def test_favorite_count_is_shown_in_caption():
     assert any("お気に入り 1 件" in c.value for c in at.caption)
 
 
+def test_memo_comment_can_be_saved_and_has_a_length_limit():
+    """第75課題: AIが書いたコメント欄に長さ制限が無い抜けを、見比べて見つけ、
+    MAX_COMMENT_LENGTHを追加して直した。実際に保存できることと、
+    入力欄に文字数上限が設定されていることの両方を確認する。"""
+    create_verified_user("tester", "tester@example.com", "pass1234")
+    at = make_app()
+    login(at, "tester", "pass1234")
+
+    at.text_input[0].input("牛乳を買う")
+    [b for b in at.button if b.label == "保存"][0].click().run()
+    at.run()
+
+    comment_input = [
+        w for w in at.text_input if w.key and w.key.startswith("comment_")
+    ][0]
+    assert comment_input.max_chars == 200
+
+    comment_input.input("明日忘れずに")
+    [b for b in at.button if b.key and b.key.startswith("save_comment_")][0].click().run()
+    at.run()
+
+    assert any("明日忘れずに" in w.value for w in at.text_input if w.key and w.key.startswith("comment_"))
+
+
 def test_free_plan_blocks_at_limit():
     create_verified_user("tester", "tester@example.com", "pass1234")
     at = make_app()
