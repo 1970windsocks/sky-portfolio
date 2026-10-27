@@ -21,6 +21,9 @@ MAX_CATEGORY_LENGTH = 50
 MAX_AI_QUESTION_LENGTH = 500  # 第69課題のレビューで見つけた抜け: メモ本文(MAX_TEXT_LENGTH)
 # には長さ制限があるのに、RAG・エージェントへの質問欄には無かった。長すぎる入力を
 # そのままClaude APIに渡すと、コストやトークン上限エラーにつながるため制限する。
+MAX_COMMENT_LENGTH = 200  # 第75課題: AIが書いたコメント欄に長さ制限が無いという抜けを、
+# 金子さんが自分の目で見つけて指摘した。CODING_STANDARDS.mdの約束事(⑥ユーザー入力には
+# 必ず長さ制限を付ける)に沿って追加する。
 
 AI_FEATURE_RATE_LIMIT = 10  # 第72課題: 第67課題の脅威モデルで「ボタン連打による
 AI_FEATURE_RATE_WINDOW_MINUTES = 1  # コスト爆発」を⚠️未対策として洗い出していたのを、
@@ -588,6 +591,18 @@ for item in visible_data:
                 meta.append(f"🏷️ {item['category']}")
             if meta:
                 col1.caption(" ｜ ".join(meta))
+            new_comment = col1.text_input(
+                "ひとことコメント",
+                value=item["comment"],
+                key=f"comment_{item['id']}",
+                label_visibility="collapsed",
+                placeholder="ひとことコメントを書く",
+                max_chars=MAX_COMMENT_LENGTH,
+            )
+            if col1.button("💬 コメントを保存", key=f"save_comment_{item['id']}"):
+                db.set_comment(item["id"], st.session_state.username, new_comment)
+                _cached_list_memos.clear()
+                st.rerun()
             if col2.button("⭐" if item["is_favorite"] else "☆", key=f"fav_{item['id']}", help="お気に入り"):
                 db.set_favorite(item["id"], st.session_state.username, not item["is_favorite"])
                 _cached_list_memos.clear()
