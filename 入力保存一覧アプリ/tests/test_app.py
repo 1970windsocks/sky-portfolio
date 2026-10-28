@@ -739,3 +739,27 @@ def test_rag_question_is_rate_limited(monkeypatch):
     [b for b in at.button if b.key == "ask_rag"][0].click().run()
 
     assert any("呼び出しすぎ" in w.value for w in at.warning)
+
+
+def test_support_agent_run_is_rate_limited(monkeypatch):
+    """第76課題のリファクタリング(_ai_rate_limit_ok()への集約)で、
+    3箇所目(エージェント実行)の動きが変わっていないことを確認する。
+    以前は個別にテストされていなかったので、ここで追加する。"""
+    import support_agent
+
+    create_verified_user("bosssan", "boss@example.com", "pass1234", role="admin")
+
+    for _ in range(10):
+        audit.log_action("bosssan", "ai_agent_run")
+
+    def fail_if_called(api_key, index, question, max_search_attempts=2):
+        raise AssertionError("レート制限に達しているのにAPIを呼んではいけない")
+
+    monkeypatch.setattr(support_agent, "run_agent", fail_if_called)
+
+    at = make_app()
+    login(at, "bosssan", "pass1234")
+    at.text_input(key="agent_question").input("返品はできますか")
+    [b for b in at.button if b.key == "run_support_agent"][0].click().run()
+
+    assert any("呼び出しすぎ" in w.value for w in at.warning)

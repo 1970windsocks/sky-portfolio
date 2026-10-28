@@ -93,6 +93,27 @@ def _cached_list_memos(owner):
     return db.list_memos(owner)
 
 
+def _ai_rate_limit_ok(action):
+    """第76課題(リファクタリング): カテゴリー提案・RAG質問・エージェント実行の
+    3箇所で、ほぼ同じレート制限チェック(第72課題)がそのままコピペされていたのを
+    1つにまとめた。動きは変えていない — 上限に達していなければ呼び出しを記録して
+    Trueを返し、達していれば警告を出してFalseを返すだけ。
+
+    呼び出し側は `elif _ai_rate_limit_ok("対象のaction名"):` の形で使う。
+    """
+    if (
+        audit.recent_count(action, AI_FEATURE_RATE_WINDOW_MINUTES, username=st.session_state.username)
+        >= AI_FEATURE_RATE_LIMIT
+    ):
+        st.warning(
+            f"短時間に呼び出しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど時間をおいてください"
+            "(意図しないAPI費用を防ぐための制限です)。"
+        )
+        return False
+    audit.log_action(st.session_state.username, action)
+    return True
+
+
 def show_flash():
     if "flash_message" in st.session_state:
         if st.session_state.get("flash_is_error"):
@@ -347,18 +368,7 @@ if st.session_state.role == "admin":
         if st.button("質問する", key="ask_rag"):
             if not rag_question.strip():
                 st.warning("質問を入力してください")
-            elif (
-                audit.recent_count(
-                    "ai_rag_question", AI_FEATURE_RATE_WINDOW_MINUTES, username=st.session_state.username
-                )
-                >= AI_FEATURE_RATE_LIMIT
-            ):
-                st.warning(
-                    f"短時間に呼び出しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど時間をおいてください"
-                    "(意図しないAPI費用を防ぐための制限です)。"
-                )
-            else:
-                audit.log_action(st.session_state.username, "ai_rag_question")
+            elif _ai_rate_limit_ok("ai_rag_question"):
                 try:
                     result = rag.answer_question(
                         os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -389,18 +399,7 @@ if st.session_state.role == "admin":
         if st.button("エージェントを実行する", key="run_support_agent"):
             if not agent_question.strip():
                 st.warning("質問を入力してください")
-            elif (
-                audit.recent_count(
-                    "ai_agent_run", AI_FEATURE_RATE_WINDOW_MINUTES, username=st.session_state.username
-                )
-                >= AI_FEATURE_RATE_LIMIT
-            ):
-                st.warning(
-                    f"短時間に実行しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど時間をおいてください"
-                    "(意図しないAPI費用を防ぐための制限です)。"
-                )
-            else:
-                audit.log_action(st.session_state.username, "ai_agent_run")
+            elif _ai_rate_limit_ok("ai_agent_run"):
                 with st.spinner("調べて→まとめています..."):
                     agent_result = support_agent.run_agent(
                         os.environ.get("ANTHROPIC_API_KEY", ""),
@@ -623,20 +622,7 @@ for item in visible_data:
                     # 第72課題: 第67課題の脅威モデルで「ボタン連打によるコスト爆発」を
                     # ⚠️未対策として洗い出していた。この機能はメモの件数分ボタンが並ぶ
                     # (=連打されやすい)ため、特にレート制限の効果が大きい。
-                    if (
-                        audit.recent_count(
-                            "ai_category_suggest",
-                            AI_FEATURE_RATE_WINDOW_MINUTES,
-                            username=st.session_state.username,
-                        )
-                        >= AI_FEATURE_RATE_LIMIT
-                    ):
-                        st.warning(
-                            f"短時間に呼び出しすぎです。{AI_FEATURE_RATE_WINDOW_MINUTES}分ほど"
-                            "時間をおいてください(意図しないAPI費用を防ぐための制限です)。"
-                        )
-                    else:
-                        audit.log_action(st.session_state.username, "ai_category_suggest")
+                    if _ai_rate_limit_ok("ai_category_suggest"):
                         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
                         try:
                             suggestion = ai_category.suggest_category(api_key, item["text"], categories)
