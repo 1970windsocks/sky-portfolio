@@ -474,9 +474,20 @@ with st.expander("🔑 APIトークン(/api/memos で自分のメモを取得す
 
 my_data = _cached_list_memos(st.session_state.username)
 
+if not my_data:
+    # 第90課題: 以前はこの案内が「保存した一覧」の下(=フォームより後)にあり、
+    # 初めての人がフォームに何を書けばいいか迷っている時には目に入らなかった。
+    # フォームの直前に移動し、最初に読んでもらえるようにする。
+    st.info(
+        "👋 **はじめての方へ**\n\n"
+        "1. 下の「内容を入力してください」に書きたいことを入力して「保存」を押してみましょう\n"
+        "2. カテゴリーを付けたり、検索・並び替えで見返しやすく整理できます\n"
+        "3. 月5件を超えたらProプランで無制限に保存できるようになります"
+    )
+
 # ① フォーム
 with st.form("add_form", clear_on_submit=True):
-    text = st.text_input("内容を入力してください")
+    text = st.text_input("内容を入力してください", placeholder="例: 牛乳を買う、資料を見直す")
     category = st.text_input("カテゴリー(任意)", placeholder="例: 仕事、アイデア、TODO")
     submitted = st.form_submit_button("保存", use_container_width=True)
 
@@ -542,14 +553,7 @@ if category_filter != "すべて":
     visible_data = [item for item in visible_data if item["category"] == category_filter]
 visible_data = sorted(visible_data, key=lambda item: item["id"], reverse=(sort_order == "新しい順"))
 
-if not my_data:
-    st.info(
-        "👋 **はじめての方へ**\n\n"
-        "1. 上の「内容を入力してください」に書きたいことを入力して「保存」を押してみましょう\n"
-        "2. カテゴリーを付けたり、検索・並び替えで見返しやすく整理できます\n"
-        "3. 月5件を超えたらProプランで無制限に保存できるようになります"
-    )
-elif not visible_data:
+if my_data and not visible_data:
     st.write("検索結果が見つかりませんでした")
 
 for item in visible_data:
@@ -581,7 +585,10 @@ for item in visible_data:
                 st.session_state.editing_id = None
                 st.rerun()
         else:
-            col1, col2, col3, col4, col5 = st.columns([4, 1, 1, 1, 1])
+            # 第90課題: 以前は編集・削除・AI提案がアイコンのみで、初めての人には
+            # 記号の意味が分からなかった(help=のツールチップはスマホでは出ない)。
+            # 文字ラベルを添えるため、列の幅もアイコンのみの時より広げている。
+            col1, col2, col3, col4, col5 = st.columns([3, 1, 1.3, 1.3, 1.6])
             col1.write(item["text"])
             meta = []
             if item["date"]:
@@ -606,10 +613,10 @@ for item in visible_data:
                 db.set_favorite(item["id"], st.session_state.username, not item["is_favorite"])
                 _cached_list_memos.clear()
                 st.rerun()
-            if col3.button("✏️", key=f"edit_btn_{item['id']}", help="編集"):
+            if col3.button("✏️ 編集", key=f"edit_btn_{item['id']}", help="このメモを編集する"):
                 st.session_state.editing_id = item["id"]
                 st.rerun()
-            if col4.button("🗑️", key=f"del_{item['id']}", help="削除"):
+            if col4.button("🗑️ 削除", key=f"del_{item['id']}", help="このメモを削除する"):
                 # ④ 削除
                 db.delete_memo(item["id"], st.session_state.username)
                 _cached_list_memos.clear()
@@ -618,7 +625,7 @@ for item in visible_data:
                 # 第63課題: AIをチャットの外で機能として使う。カテゴリー未入力のメモに対して、
                 # 既存のカテゴリー一覧と一貫性のある提案をAIにさせる。呼び出しはこのボタンを
                 # 押したときだけ(自動実行にしない)なので、意図しないAPIコストは発生しない。
-                if col5.button("✨", key=f"ai_category_{item['id']}", help="AIにカテゴリーを提案してもらう"):
+                if col5.button("✨ AI提案", key=f"ai_category_{item['id']}", help="AIにカテゴリーを提案してもらう"):
                     # 第72課題: 第67課題の脅威モデルで「ボタン連打によるコスト爆発」を
                     # ⚠️未対策として洗い出していた。この機能はメモの件数分ボタンが並ぶ
                     # (=連打されやすい)ため、特にレート制限の効果が大きい。
