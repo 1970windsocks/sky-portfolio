@@ -585,10 +585,12 @@ for item in visible_data:
                 st.session_state.editing_id = None
                 st.rerun()
         else:
-            # 第90課題: 以前は編集・削除・AI提案がアイコンのみで、初めての人には
-            # 記号の意味が分からなかった(help=のツールチップはスマホでは出ない)。
-            # 文字ラベルを添えるため、列の幅もアイコンのみの時より広げている。
-            col1, col2, col3, col4, col5 = st.columns([3, 1, 1.3, 1.3, 1.6])
+            # 第91課題: 第90課題で編集・削除・AI提案に文字ラベルを足したところ、
+            # スマホ幅ではst.columnsが自動で縦積みになり、1件のメモが5段に伸びて
+            # 縦スクロールが大幅に増えることが分かった(ローカルで実機幅を再現して確認済み)。
+            # 使用頻度の低い3つを「⋯」ポップオーバーにまとめ、スマホでの縦の高さを
+            # 2段(お気に入り・その他)まで戻す。ラベルはポップオーバーの中でそのまま残す。
+            col1, col2, col_more = st.columns([4, 1, 1])
             col1.write(item["text"])
             meta = []
             if item["date"]:
@@ -613,36 +615,37 @@ for item in visible_data:
                 db.set_favorite(item["id"], st.session_state.username, not item["is_favorite"])
                 _cached_list_memos.clear()
                 st.rerun()
-            if col3.button("✏️ 編集", key=f"edit_btn_{item['id']}", help="このメモを編集する"):
-                st.session_state.editing_id = item["id"]
-                st.rerun()
-            if col4.button("🗑️ 削除", key=f"del_{item['id']}", help="このメモを削除する"):
-                # ④ 削除
-                db.delete_memo(item["id"], st.session_state.username)
-                _cached_list_memos.clear()
-                st.rerun()
-            if not item["category"]:
-                # 第63課題: AIをチャットの外で機能として使う。カテゴリー未入力のメモに対して、
-                # 既存のカテゴリー一覧と一貫性のある提案をAIにさせる。呼び出しはこのボタンを
-                # 押したときだけ(自動実行にしない)なので、意図しないAPIコストは発生しない。
-                if col5.button("✨ AI提案", key=f"ai_category_{item['id']}", help="AIにカテゴリーを提案してもらう"):
-                    # 第72課題: 第67課題の脅威モデルで「ボタン連打によるコスト爆発」を
-                    # ⚠️未対策として洗い出していた。この機能はメモの件数分ボタンが並ぶ
-                    # (=連打されやすい)ため、特にレート制限の効果が大きい。
-                    if _ai_rate_limit_ok("ai_category_suggest"):
-                        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-                        try:
-                            suggestion = ai_category.suggest_category(api_key, item["text"], categories)
-                        except ai_category.AiCategorySuggestionError as e:
-                            # AIの提案はあくまで下書き。失敗してもメモ保存自体には影響しない
-                            # (ユーザーは今まで通り✏️から手でカテゴリーを付けられる)。
-                            st.warning(f"カテゴリーを提案できませんでした: {e}")
-                        else:
-                            db.update_memo(item["id"], st.session_state.username, item["text"], suggestion)
-                            _cached_list_memos.clear()
-                            st.session_state.flash_message = f"AIがカテゴリーを提案しました: {suggestion}(違う場合は✏️で編集できます)"
-                            st.session_state.flash_is_error = False
-                            st.rerun()
+            with col_more.popover("⋯", help="編集・削除・AI提案"):
+                if st.button("✏️ 編集", key=f"edit_btn_{item['id']}", use_container_width=True):
+                    st.session_state.editing_id = item["id"]
+                    st.rerun()
+                if st.button("🗑️ 削除", key=f"del_{item['id']}", use_container_width=True):
+                    # ④ 削除
+                    db.delete_memo(item["id"], st.session_state.username)
+                    _cached_list_memos.clear()
+                    st.rerun()
+                if not item["category"]:
+                    # 第63課題: AIをチャットの外で機能として使う。カテゴリー未入力のメモに対して、
+                    # 既存のカテゴリー一覧と一貫性のある提案をAIにさせる。呼び出しはこのボタンを
+                    # 押したときだけ(自動実行にしない)なので、意図しないAPIコストは発生しない。
+                    if st.button("✨ AI提案", key=f"ai_category_{item['id']}", use_container_width=True):
+                        # 第72課題: 第67課題の脅威モデルで「ボタン連打によるコスト爆発」を
+                        # ⚠️未対策として洗い出していた。この機能はメモの件数分ボタンが並ぶ
+                        # (=連打されやすい)ため、特にレート制限の効果が大きい。
+                        if _ai_rate_limit_ok("ai_category_suggest"):
+                            api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+                            try:
+                                suggestion = ai_category.suggest_category(api_key, item["text"], categories)
+                            except ai_category.AiCategorySuggestionError as e:
+                                # AIの提案はあくまで下書き。失敗してもメモ保存自体には影響しない
+                                # (ユーザーは今まで通り✏️で手でカテゴリーを付けられる)。
+                                st.warning(f"カテゴリーを提案できませんでした: {e}")
+                            else:
+                                db.update_memo(item["id"], st.session_state.username, item["text"], suggestion)
+                                _cached_list_memos.clear()
+                                st.session_state.flash_message = f"AIがカテゴリーを提案しました: {suggestion}(違う場合は✏️編集で直せます)"
+                                st.session_state.flash_is_error = False
+                                st.rerun()
 
 st.divider()
 
