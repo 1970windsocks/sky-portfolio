@@ -185,12 +185,14 @@ def test_toggle_favorite():
     [b for b in at.button if b.label == "保存"][0].click().run()
     at.run()
 
+    # 第92課題: 読み上げソフトでも意味が伝わるよう、ボタンの文字に
+    # 「お気に入り」を含めた(以前は記号「☆」「⭐」のみだった)。
     fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
-    assert fav_button.label == "☆"
+    assert fav_button.label == "☆ お気に入り"
 
     fav_button.click().run()
     fav_button = [b for b in at.button if b.key and b.key.startswith("fav_")][0]
-    assert fav_button.label == "⭐"
+    assert fav_button.label == "⭐ お気に入り"
 
 
 def test_favorite_count_is_shown_in_caption():
@@ -393,8 +395,10 @@ def test_save_with_category_shows_metadata():
     at.run()  # 保存後、次の再描画で一覧に反映される
 
     assert any("会議メモ" in m.value for m in at.markdown)
-    assert any("🏷️ 仕事" in c.value for c in at.caption)
-    assert any("📅 " in c.value for c in at.caption)
+    # 第92課題: コントラスト不足(実測3.68:1)のst.captionから、
+    # 地の文と同じ濃さのst.writeに変えたため、ここもat.markdownで検証する。
+    assert any("🏷️ 仕事" in m.value for m in at.markdown)
+    assert any("📅 " in m.value for m in at.markdown)
 
 
 def test_search_filters_list():
