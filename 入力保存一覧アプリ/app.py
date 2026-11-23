@@ -590,7 +590,8 @@ for item in visible_data:
             # 縦スクロールが大幅に増えることが分かった(ローカルで実機幅を再現して確認済み)。
             # 使用頻度の低い3つを「⋯」ポップオーバーにまとめ、スマホでの縦の高さを
             # 2段(お気に入り・その他)まで戻す。ラベルはポップオーバーの中でそのまま残す。
-            col1, col2, col_more = st.columns([4, 1, 1])
+            # 第92課題: col2の幅を少し広げたのは、⭐ボタンに次の行でラベルを足したため。
+            col1, col2, col_more = st.columns([4, 1.6, 1])
             col1.write(item["text"])
             meta = []
             if item["date"]:
@@ -598,7 +599,11 @@ for item in visible_data:
             if item["category"]:
                 meta.append(f"🏷️ {item['category']}")
             if meta:
-                col1.caption(" ｜ ".join(meta))
+                # 第92課題: st.captionは文字を60%の薄さで表示するため、実測で
+                # コントラスト比3.68:1(WCAG AAが求める4.5:1未満)だった。
+                # 日付・カテゴリーは装飾ではなく実際の情報なので、st.writeに変えて
+                # 地の文と同じ濃さ(コントラスト比12.5:1)で読めるようにする。
+                col1.write(" ｜ ".join(meta))
             new_comment = col1.text_input(
                 "ひとことコメント",
                 value=item["comment"],
@@ -611,7 +616,11 @@ for item in visible_data:
                 db.set_comment(item["id"], st.session_state.username, new_comment)
                 _cached_list_memos.clear()
                 st.rerun()
-            if col2.button("⭐" if item["is_favorite"] else "☆", key=f"fav_{item['id']}", help="お気に入り"):
+            # 第92課題: help=のツールチップは見た目には出るが、実機確認したところ
+            # ボタンのaria-label/titleには反映されず、画面読み上げソフトには伝わらない。
+            # ボタンの文字そのものにラベルを入れて、読み上げでも意味が分かるようにする。
+            fav_label = "⭐ お気に入り" if item["is_favorite"] else "☆ お気に入り"
+            if col2.button(fav_label, key=f"fav_{item['id']}", help="お気に入りの追加・解除"):
                 db.set_favorite(item["id"], st.session_state.username, not item["is_favorite"])
                 _cached_list_memos.clear()
                 st.rerun()
